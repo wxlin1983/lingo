@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Duolingo Word Quiz</title>
     <style>
+        /* CSS styles remain the same as before for visual consistency */
         body {
             font-family: Arial, sans-serif;
             margin: 0;
@@ -139,15 +140,10 @@
         {% else %}
             {# --- Progress Bar Calculation --- #}
             {% set completed_questions = current_index %}
-            {# If showing feedback for an incorrect answer, the current question isn't 'passed' yet #}
+            {# If feedback is present, we are reviewing a previous (incorrect) answer #}
             {% if feedback %}
-                {# The completed count is based on the answers array length, but since we are on index 'current_index' 
-                   after an incorrect submission, and the answer has been logged, we base it on total questions up to this point. 
-                   If the index is 0 and it's incorrect, 0 questions are complete. 
-                   If the index is 5 and it's incorrect, 5 questions are complete. #}
                 {% set current_progress = (current_index / total_questions) * 100 %}
             {% else %}
-                {# In standard display, the progress reflects completed questions which is the index we are on. #}
                 {% set current_progress = (current_index / total_questions) * 100 %}
             {% endif %}
 
@@ -160,16 +156,17 @@
 
             {# --- Display Options Grid (only if not showing feedback) --- #}
             {% if not feedback %}
+                {# The action URL is only used by JS/Fetch, not a standard form submission #}
                 <form action="/submit_answer" method="post" id="quizForm">
                     <input type="hidden" name="word" value="{{ word }}">
                     <input type="hidden" name="current_index" value="{{ current_index }}">
                     
                     <div class="option-grid">
                         {% for option in options %}
-                            <button type="submit" 
-                                    name="answer" 
-                                    value="{{ option }}" 
-                                    class="option-button">
+                            <button type="button" 
+                                    class="option-button"
+                                    data-answer="{{ option }}" 
+                                    onclick="submitAnswer(this)">
                                 {{ option }}
                             </button>
                         {% endfor %}
@@ -180,8 +177,8 @@
         {% endif %}
     </div>
 
-    {# --- Feedback Bar (Display ONLY if feedback is 'incorrect') --- #}
-    {% if feedback == 'incorrect' %}
+    {# --- Feedback Bar (Display ONLY if feedback is present/incorrect) --- #}
+    {% if feedback and not feedback.is_correct %}
         {% set next_index = current_index + 1 %}
         {% set is_last_question = next_index >= total_questions %}
 
@@ -189,8 +186,8 @@
             <div class="feedback-container">
                 <div class="message-box incorrect">
                     <h3>❌ Answer Incorrect</h3>
-                    <p>You answered: **{{ user_answer }}**</p>
-                    <p>The correct translation for **{{ word }}** is: **{{ correct_answer }}**</p>
+                    <p>You answered: **{{ feedback.user_answer }}**</p>
+                    <p>The correct translation for **{{ word }}** is: **{{ feedback.correct_answer }}**</p>
                 </div>
 
                 {# Continue Button: either to next question or to results #}
@@ -205,6 +202,63 @@
                 {% endif %}
             </div>
         </div>
+    {% endif %}
+
+    {# --- JavaScript for API Call and Redirection --- #}
+    {% if not feedback %}
+    <script>
+        function submitAnswer(button) {
+            // Disable all buttons to prevent double-click
+            document.querySelectorAll('.option-button').forEach(btn => btn.disabled = true);
+            
+            const form = document.getElementById('quizForm');
+            const word = form.querySelector('input[name="word"]').value;
+            const current_index = form.querySelector('input[name="current_index"]').value;
+            const answer = button.getAttribute('data-answer');
+
+            // Construct FormData object
+            const formData = new FormData();
+            formData.append('word', word);
+            formData.append('current_index', current_index);
+            formData.append('answer', answer);
+
+            fetch('/submit_answer', {
+                method: 'POST',
+                body: formData,
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                const nextUrl = data.next_index >= data.total_questions ? '/result' : `/quiz/${data.next_index}`;
+                
+                if (data.is_correct) {
+                    // CORRECT: Redirect immediately to the next question/result
+                    window.location.href = nextUrl;
+                } else {
+                    // INCORRECT: Redirect to the current question with feedback data encoded
+                    const feedback = {
+                        is_correct: false,
+                        user_answer: data.user_answer,
+                        correct_answer: data.correct_answer
+                    };
+                    const feedbackJson = JSON.stringify(feedback);
+                    const encodedFeedback = encodeURIComponent(feedbackJson);
+                    
+                    window.location.href = `/quiz/${data.current_index}?feedback_data=${encodedFeedback}`;
+                }
+            })
+            .catch(error => {
+                console.error('Submission error:', error);
+                alert('An error occurred during submission. Please try again.');
+                // Re-enable buttons on error
+                document.querySelectorAll('.option-button').forEach(btn => btn.disabled = false);
+            });
+        }
+    </script>
     {% endif %}
 
 </body>

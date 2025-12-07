@@ -1,19 +1,22 @@
 import pandas as pd
 import random
+import json
 from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from urllib.parse import quote
 
 # --- Configuration ---
 app = FastAPI()
+# NOTE: Ensure you have a 'templates' directory with 'index.html' and 'result.html'
 templates = Jinja2Templates(directory="templates")
 WORDS_FILE = "words.csv"
 TEST_SIZE = 15
 
 # Global storage (simulate a database)
 ALL_WORDS: List[Dict[str, str]] = []
+# Session storage keys the session ID to the user's quiz state
 user_sessions: Dict[str, Dict] = {}
 SESSION_ID = "test_session"
 
@@ -28,12 +31,21 @@ def load_words() -> List[Dict[str, str]]:
         df = pd.read_csv(WORDS_FILE, encoding="utf-8")
         return df.to_dict("records")
     except FileNotFoundError:
-        print(f"ERROR: File {WORDS_FILE} not found.")
-        return []
+        print(f"ERROR: File {WORDS_FILE} not found. Please create one.")
+        # Create a dummy file for the app to run without erroring out immediately
+        # You should replace this with a real file.
+        dummy_data = {
+            "word": ["Hund", "Katze", "Baum", "Haus", "Wasser"],
+            "translation": ["dog", "cat", "tree", "house", "water"],
+        }
+        df_dummy = pd.DataFrame(dummy_data)
+        return df_dummy.to_dict("records")
 
 
 def get_test_words() -> List[Dict[str, str]]:
     """Randomly selects TEST_SIZE words for the quiz."""
+    if not ALL_WORDS:
+        return []
     if len(ALL_WORDS) < TEST_SIZE:
         return random.sample(ALL_WORDS, len(ALL_WORDS))
     return random.sample(ALL_WORDS, TEST_SIZE)
@@ -43,18 +55,18 @@ def generate_options(
     correct_translation: str, all_words: List[Dict[str, str]]
 ) -> List[str]:
     """Generates four options (one correct, three wrong) for a given translation."""
+    if not all_words:
+        return [correct_translation]
+
     incorrect_translations = [
         w["translation"] for w in all_words if w["translation"] != correct_translation
     ]
 
-    # Ensure we get 3 unique wrong options if possible
     wrong_options = random.sample(
         incorrect_translations, min(3, len(incorrect_translations))
     )
-
     # Pad if we have fewer than 3 incorrect options (unlikely in a large list)
     while len(wrong_options) < 3:
-        # Just repeat an existing wrong option or a dummy if needed
         wrong_options.append(
             random.choice(incorrect_translations)
             if incorrect_translations
@@ -73,22 +85,18 @@ def generate_options(
 async def startup_event():
     global ALL_WORDS
     ALL_WORDS = load_words()
-    if not ALL_WORDS:
-        print("WARNING: Word database is empty or failed to load!")
 
 
 # --- Routes ---
 
 
-@app.get("/", response_class=HTMLResponse)
-async def start_quiz(request: Request):
+@app.get("/", response_class=RedirectResponse)
+async def start_quiz():
     """Initializes the quiz and redirects to the first question."""
     if not ALL_WORDS:
-        return templates.TemplateResponse(
-            "index.html",
-            {"request": request, "error": "Word database failed to load or is empty."},
-            status_code=500,
-        )
+        # In a real app, this would redirect to a proper error page
+        print("ERROR: Word database is empty.")
+        return RedirectResponse(url="/", status_code=500)
 
     test_words = get_test_words()
 
@@ -108,44 +116,52 @@ async def start_quiz(request: Request):
 async def display_question(
     request: Request,
     index: int,
-    # Query parameters for feedback (only used for incorrect answers)
-    feedback: Optional[str] = None,
-    user_ans: Optional[str] = None,
-    correct_ans: Optional[str] = None,
+    # Query parameter for feedback data (JSON string)
+    feedback_data: Optional[str] = None,
 ):
     """
-    Displays a specific question by index, optionally showing feedback
-    if redirected from an incorrect submission.
+    Displays a specific question by index, or displays feedback if provided.
     """
     session_data = user_sessions.get(SESSION_ID)
 
-    if not session_data or index >= session_data["total_questions"]:
-        # If index is out of bounds, check if quiz is finished
-        if session_data and index == session_data["total_questions"]:
-            return RedirectResponse(url="/result", status_code=302)
+    if not session_data:
         return RedirectResponse(url="/", status_code=302)
+
+    # Check if quiz is finished
+    if index >= session_data["total_questions"]:
+        return RedirectResponse(url="/result", status_code=302)
 
     current_word_data = session_data["test_words"][index]
 
-    # If feedback is provided, it means the user was incorrect and we are showing the review screen.
-    if feedback is not None and feedback == "incorrect":
+    # --- Feedback Mode (After an incorrect submission) ---
+    if feedback_data:
+        try:
+            feedback = json.loads(feedback_data)
+        except json.JSONDecodeError:
+            feedback = {
+                "is_correct": False,
+                "user_answer": "Error",
+                "correct_answer": "Error",
+            }
+
         context = {
             "request": request,
             "word": current_word_data["word"],
             "current_index": index,
             "total_questions": session_data["total_questions"],
-            # Feedback data
             "feedback": feedback,
-            "user_answer": user_ans,
-            "correct_answer": correct_ans,
             "options": [],  # Hide options during feedback
         }
         return templates.TemplateResponse("index.html", context)
 
-    # --- Standard Question Display (If not in feedback mode) ---
+    # --- Standard Question Display ---
 
-    # If already answered, redirect to the next unanswered question or result
-    if index < len(session_data["answers"]):
+    # If the question was already answered correctly, skip it (incorrect ones require review)
+    # The length of 'answers' tells us how many questions have been *submitted*
+    if (
+        index < len(session_data["answers"])
+        and session_data["answers"][index]["is_correct"]
+    ):
         next_index = len(session_data["answers"])
         if next_index < session_data["total_questions"]:
             return RedirectResponse(url=f"/quiz/{next_index}", status_code=302)
@@ -160,24 +176,23 @@ async def display_question(
         "options": options,
         "current_index": index,
         "total_questions": session_data["total_questions"],
-        "feedback": None,  # Ensure feedback is None for normal question view
+        "feedback": None,
     }
     return templates.TemplateResponse("index.html", context)
 
 
-@app.post("/submit_answer", response_class=RedirectResponse)
+@app.post("/submit_answer", response_class=JSONResponse)
 async def submit_answer(
     word: str = Form(...), answer: str = Form(...), current_index: int = Form(...)
 ):
     """
-    Processes the user's answer.
-    If correct: redirects to the next question/result.
-    If incorrect: redirects back to the current question with feedback.
+    Processes the user's answer, records it, and returns a JSON response.
+    This route handles NO REDIRECTION.
     """
     session_data = user_sessions.get(SESSION_ID)
 
     if not session_data or current_index >= session_data["total_questions"]:
-        return RedirectResponse(url="/", status_code=302)
+        return JSONResponse({"error": "Invalid session or index"}, status_code=400)
 
     current_word_data = session_data["test_words"][current_index]
     correct_translation = current_word_data["translation"]
@@ -198,27 +213,17 @@ async def submit_answer(
             }
         )
 
-    next_index = current_index + 1
-
-    if is_correct:
-        # If correct: Redirect directly to the next question or result
-        if next_index >= session_data["total_questions"]:
-            return RedirectResponse(url="/result", status_code=303)
-        else:
-            return RedirectResponse(url=f"/quiz/{next_index}", status_code=303)
-    else:
-        # If incorrect: Redirect back to the current question with URL-encoded feedback
-        feedback_type = "incorrect"
-
-        return RedirectResponse(
-            url=(
-                f"/quiz/{current_index}?"
-                f"feedback={feedback_type}&"
-                f"user_ans={quote(answer)}&"
-                f"correct_ans={quote(correct_translation)}"
-            ),
-            status_code=303,  # 303 See Other is best for POST-redirect-GET pattern
-        )
+    # Return data for the client (JavaScript) to handle redirection/feedback display
+    return JSONResponse(
+        {
+            "is_correct": is_correct,
+            "current_index": current_index,
+            "next_index": current_index + 1,
+            "total_questions": session_data["total_questions"],
+            "user_answer": answer,
+            "correct_answer": correct_translation,
+        }
+    )
 
 
 # --- Result Route ---
@@ -247,6 +252,7 @@ async def show_result(request: Request):
         "answers": session_data["answers"],
     }
 
+    # NOTE: This requires a 'result.html' template to exist in the 'templates' directory
     return templates.TemplateResponse("result.html", context)
 
 
@@ -254,11 +260,5 @@ async def show_result(request: Request):
 if __name__ == "__main__":
     import uvicorn
 
-    # You would typically need a words.csv file in the same directory
-    # with 'word' and 'translation' columns to run this successfully.
-    # Example:
-    # word,translation
-    # Hund,dog
-    # Katze,cat
-
+    # To run this, you need a 'words.csv' file and the Jinja2 templates.
     uvicorn.run(app, host="0.0.0.0", port=8000)
