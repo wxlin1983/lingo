@@ -5,21 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Duolingo Word Quiz</title>
     <style>
-        /* CSS styles remain the same for responsiveness and Duolingo aesthetic */
         body {
             font-family: Arial, sans-serif;
             margin: 0;
-            padding: 20px;
+            padding: 0;
             background-color: #f7f7f7;
             text-align: center;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
         }
         .container {
+            flex-grow: 1;
             max-width: 600px;
-            margin: 0 auto;
+            margin: 20px auto;
             background-color: white;
             padding: 30px;
             border-radius: 12px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
         }
         .progress-bar {
             height: 8px;
@@ -69,6 +73,62 @@
             background-color: #f0f0f0;
             border-color: #1cb0f6;
         }
+
+        /* --- Feedback Bar Styles --- */
+        .feedback-bar {
+            width: 100%;
+            padding: 20px 0;
+            margin-top: auto;
+            background-color: #ffc9c9; /* Light Red for Incorrect */
+            border-top: 1px solid #e5e5e5;
+        }
+        .feedback-container {
+            max-width: 600px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 0 20px;
+        }
+        .message-box {
+            width: 100%;
+            padding: 15px 20px;
+            border-radius: 12px;
+            text-align: left;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .incorrect {
+            background-color: #ffc9c9;
+            color: #ff4747; /* Darker Red */
+            border-bottom: 5px solid #ff4747;
+        }
+        .message-box h3 {
+            margin-top: 0;
+            font-size: 1.3em;
+        }
+        .message-box p {
+            margin: 5px 0;
+            font-size: 1.1em;
+        }
+
+        /* Continue Button Style */
+        .continue-button {
+            width: 100%;
+            background-color: #ff4747; /* Red for Incorrect path */
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 12px;
+            font-size: 1.2em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            text-transform: uppercase;
+        }
+        .continue-button:hover {
+            background-color: #e63939;
+        }
     </style>
 </head>
 <body>
@@ -77,7 +137,20 @@
             <p style="color: red;">{{ error }}</p>
             <a href="/" class="restart-button" style="display: block; margin-top: 20px;">Try Reloading</a>
         {% else %}
-            {% set current_progress = ((current_index + 1) / total_questions) * 100 %}
+            {# --- Progress Bar Calculation --- #}
+            {% set completed_questions = current_index %}
+            {# If showing feedback for an incorrect answer, the current question isn't 'passed' yet #}
+            {% if feedback %}
+                {# The completed count is based on the answers array length, but since we are on index 'current_index' 
+                   after an incorrect submission, and the answer has been logged, we base it on total questions up to this point. 
+                   If the index is 0 and it's incorrect, 0 questions are complete. 
+                   If the index is 5 and it's incorrect, 5 questions are complete. #}
+                {% set current_progress = (current_index / total_questions) * 100 %}
+            {% else %}
+                {# In standard display, the progress reflects completed questions which is the index we are on. #}
+                {% set current_progress = (current_index / total_questions) * 100 %}
+            {% endif %}
+
             <div class="progress-bar">
                 <div class="progress" style="width: {{ current_progress }}%;"></div>
             </div>
@@ -85,22 +158,54 @@
             <h1>What does this word mean?</h1>
             <div class="word-display">{{ word }}</div>
 
-            <form action="/submit_answer" method="post" id="quizForm">
-                <input type="hidden" name="word" value="{{ word }}">
-                <input type="hidden" name="current_index" value="{{ current_index }}">
-                
-                <div class="option-grid">
-                    {% for option in options %}
-                        <button type="submit" 
-                                name="answer" 
-                                value="{{ option }}" 
-                                class="option-button">
-                            {{ option }}
-                        </button>
-                    {% endfor %}
-                </div>
-            </form>
+            {# --- Display Options Grid (only if not showing feedback) --- #}
+            {% if not feedback %}
+                <form action="/submit_answer" method="post" id="quizForm">
+                    <input type="hidden" name="word" value="{{ word }}">
+                    <input type="hidden" name="current_index" value="{{ current_index }}">
+                    
+                    <div class="option-grid">
+                        {% for option in options %}
+                            <button type="submit" 
+                                    name="answer" 
+                                    value="{{ option }}" 
+                                    class="option-button">
+                                {{ option }}
+                            </button>
+                        {% endfor %}
+                    </div>
+                </form>
+            {% endif %}
+
         {% endif %}
     </div>
+
+    {# --- Feedback Bar (Display ONLY if feedback is 'incorrect') --- #}
+    {% if feedback == 'incorrect' %}
+        {% set next_index = current_index + 1 %}
+        {% set is_last_question = next_index >= total_questions %}
+
+        <div class="feedback-bar">
+            <div class="feedback-container">
+                <div class="message-box incorrect">
+                    <h3>❌ Answer Incorrect</h3>
+                    <p>You answered: **{{ user_answer }}**</p>
+                    <p>The correct translation for **{{ word }}** is: **{{ correct_answer }}**</p>
+                </div>
+
+                {# Continue Button: either to next question or to results #}
+                {% if is_last_question %}
+                    <form action="/result" method="get" style="width: 100%;">
+                        <button type="submit" class="continue-button">View Results</button>
+                    </form>
+                {% else %}
+                    <form action="/quiz/{{ next_index }}" method="get" style="width: 100%;">
+                        <button type="submit" class="continue-button">Continue</button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+
 </body>
 </html>

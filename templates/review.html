@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Review Answer</title>
+</head>
+<body>
+    <h1>Question {{ current_index + 1 }} of {{ total_questions }} - Review</h1>
+
+    <h2>Word: {{ word }}</h2>
+
+    {% if is_correct %}
+        <p style="color: green; font-weight: bold;">✅ Correct!</p>
+        <p>Your answer: {{ user_answer }}</p>
+    {% else %}
+        <p style="color: red; font-weight: bold;">❌ Incorrect!</p>
+        <p>Your answer: <strong>{{ user_answer }}</strong></p>
+        <p>The correct answer was: <strong>{{ correct_answer }}</strong></p>
+    {% endif %}
+
+    <hr>
+
+    {% if is_last_question %}
+        <form action="/result" method="get">
+            <button type="submit">View Results</button>
+        </form>
+    {% else %}
+        <form action="/quiz/{{ next_index }}" method="get">
+            <button type="submit">Continue to Next Question</button>
+        </form>
+    {% endif %}
+
+</body>
+</html>
