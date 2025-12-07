@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Duolingo Word Quiz</title>
+    <style>
+        /* CSS styles remain the same for responsiveness and Duolingo aesthetic */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f7f7f7;
+            text-align: center;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        .progress-bar {
+            height: 8px;
+            background-color: #e0e0e0;
+            border-radius: 4px;
+            margin-bottom: 30px;
+            overflow: hidden;
+        }
+        .progress {
+            height: 100%;
+            background-color: #58cc02; /* Duolingo Green */
+            transition: width 0.3s ease-in-out;
+        }
+        h1 {
+            color: #4a4a4a;
+            margin-bottom: 40px;
+            font-size: 2.2em;
+        }
+        .word-display {
+            font-size: 3em;
+            font-weight: bold;
+            margin-bottom: 50px;
+            color: #3b3b3b;
+        }
+        .option-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .option-button {
+            background-color: white;
+            color: #1cb0f6; /* Duolingo Blue */
+            border: 2px solid #e5e5e5;
+            padding: 20px 10px;
+            border-radius: 12px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s, border-color 0.2s;
+            text-align: center;
+            min-height: 80px; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .option-button:hover {
+            background-color: #f0f0f0;
+            border-color: #1cb0f6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {% if error %}
+            <p style="color: red;">{{ error }}</p>
+            <a href="/" class="restart-button" style="display: block; margin-top: 20px;">Try Reloading</a>
+        {% else %}
+            {% set current_progress = ((current_index + 1) / total_questions) * 100 %}
+            <div class="progress-bar">
+                <div class="progress" style="width: {{ current_progress }}%;"></div>
+            </div>
+
+            <h1>What does this word mean?</h1>
+            <div class="word-display">{{ word }}</div>
+
+            <form action="/submit_answer" method="post" id="quizForm">
+                <input type="hidden" name="word" value="{{ word }}">
+                <input type="hidden" name="current_index" value="{{ current_index }}">
+                
+                <div class="option-grid">
+                    {% for option in options %}
+                        <button type="submit" 
+                                name="answer" 
+                                value="{{ option }}" 
+                                class="option-button">
+                            {{ option }}
+                        </button>
+                    {% endfor %}
+                </div>
+            </form>
+        {% endif %}
+    </div>
+</body>
+</html>
