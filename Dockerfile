@@ -13,9 +13,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the application code and data
 COPY main.py .
-COPY words.csv .
 COPY templates templates/
 COPY static static/
+COPY vocabulary vocabulary/
 
 # Expose the port Uvicorn will run on
 EXPOSE 8000

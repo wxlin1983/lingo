@@ -46,7 +46,7 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="templates")
-WORDS_FILE = "words.csv"
+WORDS_FILE = "vocabulary/words.csv"
 TEST_SIZE = 15
 
 # Global storage for quiz data and session management.
