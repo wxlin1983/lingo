@@ -1,124 +1,48 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quiz Results</title>
     <style>
-        /* CSS styles remain the same for aesthetics and mobile use */
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #fff8f8;
-            text-align: center;
-        }
-        .container {
-            max-width: 700px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-        }
-        h1 {
-            color: #58cc02; /* Duolingo Green */
-            margin-bottom: 15px;
-            font-size: 2.5em;
-        }
-        .score-info {
-            font-size: 1.5em;
-            color: #3b3b3b;
-            margin-bottom: 40px;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 20px;
-        }
-        .review-section {
-            text-align: left;
-            margin-top: 30px;
-        }
-        .review-item {
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            border-left: 5px solid;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .correct {
-            background-color: #e6ffe6;
-            border-left-color: #58cc02;
-        }
-        .incorrect {
-            background-color: #fff0f0;
-            border-left-color: #ff4747;
-        }
-        .word-translation {
-            flex-grow: 1;
-        }
-        .word-translation strong {
-            font-size: 1.2em;
-            display: block;
-            margin-bottom: 5px;
-        }
-        .icon {
-            font-size: 1.8em;
-            margin-right: 10px;
-        }
-        .correct .icon {
-            color: #58cc02;
-        }
-        .incorrect .icon {
-            color: #ff4747;
-        }
-        .restart-button {
-            display: inline-block;
-            background-color: #1cb0f6;
-            color: white;
-            padding: 15px 30px;
-            border-radius: 12px;
-            text-decoration: none;
-            font-weight: bold;
-            margin-top: 30px;
-            transition: background-color 0.2s;
-        }
-        .restart-button:hover {
-            background-color: #159cd4;
-        }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .summary { margin-bottom: 30px; padding: 15px; border: 1px solid #ccc; background-color: #f9f9f9; }
+        .score { font-size: 2em; font-weight: bold; color: green; }
+        .review-item { margin-bottom: 20px; padding: 10px; border-bottom: 1px dotted #eee; }
+        .correct { color: green; font-weight: bold; }
+        .incorrect { color: red; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Quiz Complete! 🎉</h1>
-        <div class="score-info">
-            <p>Your Score: <strong>{{ correct_count }} / {{ total_questions }}</strong></p>
-            <p>Accuracy: <strong>{{ score_percentage }}%</strong></p>
-        </div>
+    <h1>🎉 Quiz Finished!</h1>
 
-        <div class="review-section">
-            <h2>Answer Review</h2>
-            {% for item in answers %}
-                <div class="review-item {% if item.is_correct %}correct{% else %}incorrect{% endif %}">
-                    <span class="icon">
-                        {% if item.is_correct %}
-                            ✅
-                        {% else %}
-                            ❌
-                        {% endif %}
-                    </span>
-                    <div class="word-translation">
-                        <strong>{{ item.word }}</strong>
-                        <p>
-                            You chose: <span style="font-weight: bold; color: {% if item.is_correct %}#58cc02{% else %}#ff4747{% endif %};">{{ item.user_answer }}</span> 
-                            {% if not item.is_correct %} (Correct Answer: {{ item.correct_answer }}){% endif %}
-                        </p>
-                    </div>
-                </div>
-            {% endfor %}
-        </div>
+    <div class="summary">
+        <h2>Your Score:</h2>
+        <p>You answered **{{ correct_count }}** out of **{{ total_questions }}** questions correctly.</p>
+        <p class="score">{{ score_percentage }}%</p>
+    </div>
 
-        <a href="/" class="restart-button">Start a New Quiz!</a>
+    <h2>Answer Review:</h2>
+    {% for answer in answers %}
+        <div class="review-item">
+            <h3>{{ loop.index }}. Word: **{{ answer.word }}**</h3>
+            <p>
+                <strong>Correct Translation:</strong> 
+                <span class="correct">{{ answer.correct_answer }}</span>
+            </p>
+            <p>
+                <strong>Your Answer:</strong>
+                {% if answer.is_correct %}
+                    <span class="correct">{{ answer.user_answer }} (Correct) 🟢</span>
+                {% else %}
+                    <span class="incorrect">{{ answer.user_answer }} (Incorrect) 🔴</span>
+                {% endif %}
+            </p>
+        </div>
+    {% endfor %}
+
+    <div style="margin-top: 30px;">
+        <a href="/">
+            <button>Start New Quiz 🔄</button>
+        </a>
     </div>
 </body>
 </html>

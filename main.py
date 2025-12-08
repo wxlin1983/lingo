@@ -5,7 +5,8 @@ from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from typing import List, Dict, Optional, Any
-from urllib.parse import quote
+
+# from urllib.parse import quote # Unused, removed for clean up
 
 # --- Configuration ---
 app = FastAPI()
@@ -19,7 +20,7 @@ user_sessions: Dict[str, Dict] = {}
 SESSION_ID = "test_session"
 
 
-# --- Core Logic Functions ---
+# --- Core Logic Functions (Kept original logic) ---
 
 
 def load_words() -> List[Dict[str, str]]:
@@ -42,7 +43,6 @@ def get_test_words() -> List[Dict[str, str]]:
     """Randomly selects TEST_SIZE words for the quiz."""
     if not ALL_WORDS:
         return []
-    # Use min() to prevent error if fewer words exist than TEST_SIZE
     return random.sample(ALL_WORDS, min(TEST_SIZE, len(ALL_WORDS)))
 
 
@@ -61,7 +61,7 @@ def generate_options(
         # If not enough incorrect options exist, pad with placeholders
         wrong_options = incorrect_translations
         while len(wrong_options) < 3:
-            wrong_options.append("Unknown or Placeholder")
+            wrong_options.append(f"Placeholder {len(wrong_options)}")
     else:
         wrong_options = random.sample(incorrect_translations, 3)
 
@@ -107,19 +107,19 @@ async def start_quiz():
     """Initializes the quiz session and redirects to the first question."""
     if not ALL_WORDS:
         print("ERROR: Word database is empty.")
-        return RedirectResponse(url="/", status_code=500)
+        # Correctly return an error response or redirect to an error page
+        # For simplicity, we redirect to a non-quiz start state
+        return HTMLResponse("<h1>Error: Word database is empty.</h1>", status_code=500)
 
     test_words = get_test_words()
     prepared_questions = prepare_quiz_data(test_words, ALL_WORDS)
 
     # Initialize a new quiz session state
     user_sessions[SESSION_ID] = {
-        "test_words": test_words,
         "prepared_questions": prepared_questions,
-        "current_index": 0,
         "correct_count": 0,
         "total_questions": len(test_words),
-        "answers": [],
+        "answers": [],  # List of recorded answer dictionaries
     }
 
     return RedirectResponse(url="/quiz/0", status_code=302)
@@ -129,11 +129,10 @@ async def start_quiz():
 async def display_question(
     request: Request,
     index: int,
-    feedback_data: Optional[str] = None,
 ):
     """
-    Displays a specific question by index.
-    Includes logic for feedback display and skipping correctly answered questions.
+    Displays a specific question by index, showing the current state
+    (answered or unanswered).
     """
     session_data = user_sessions.get(SESSION_ID)
 
@@ -142,46 +141,17 @@ async def display_question(
 
     total_questions = session_data["total_questions"]
 
-    if index >= total_questions:
+    # Boundary check: If index is out of bounds, redirect to results page
+    if index >= total_questions or index < 0:
         return RedirectResponse(url="/result", status_code=302)
 
     current_q_data = session_data["prepared_questions"][index]
-
-    # --- Feedback Mode ---
-    if feedback_data:
-        try:
-            feedback = json.loads(feedback_data)
-        except json.JSONDecodeError:
-            feedback = {
-                "is_correct": False,
-                "user_answer": "Error",
-                "correct_answer": "Error",
-            }
-
-        context = {
-            "request": request,
-            "word": current_q_data["word"],
-            "current_index": index,
-            "total_questions": total_questions,
-            "feedback": feedback,
-            "options": [],  # Options hidden during feedback
-        }
-        return templates.TemplateResponse("index.html", context)
-
-    # --- Standard Question Display/Navigation ---
-
-    # Skip correctly answered questions to the next one pending review/answer
-    if (
-        index < len(session_data["answers"])
-        and session_data["answers"][index]["is_correct"]
-    ):
-        next_index = len(session_data["answers"])
-        if next_index < total_questions:
-            return RedirectResponse(url=f"/quiz/{next_index}", status_code=302)
-        else:
-            return RedirectResponse(url="/result", status_code=302)
-
     options = current_q_data["options"]
+
+    # Check if this question has been answered
+    answer_record = None
+    if index < len(session_data["answers"]):
+        answer_record = session_data["answers"][index]
 
     context = {
         "request": request,
@@ -189,8 +159,14 @@ async def display_question(
         "options": options,
         "current_index": index,
         "total_questions": total_questions,
-        "feedback": None,
+        "correct_translation": current_q_data[
+            "translation"
+        ],  # Crucial for feedback display in template
+        "answer_record": answer_record,  # Pass record to template for display logic
+        "is_first_question": index == 0,
+        "is_last_question": index == total_questions - 1,
     }
+
     return templates.TemplateResponse("index.html", context)
 
 
@@ -199,43 +175,40 @@ async def submit_answer(
     word: str = Form(...), answer: str = Form(...), current_index: int = Form(...)
 ):
     """
-    Processes the user's answer, records the result, and returns a JSON status.
-    The client-side JavaScript handles navigation based on this JSON response.
+    Processes the user's answer, records the result, and returns a JSON status
+    for client-side feedback rendering.
     """
     session_data = user_sessions.get(SESSION_ID)
 
     if not session_data or current_index >= session_data["total_questions"]:
         return JSONResponse({"error": "Invalid session or index"}, status_code=400)
 
+    # Prevent re-submission for an already recorded answer
+    if current_index < len(session_data["answers"]):
+        return JSONResponse(
+            {"error": "Answer already recorded for this question."}, status_code=400
+        )
+
     current_q_data = session_data["prepared_questions"][current_index]
     correct_translation = current_q_data["translation"]
 
     is_correct = answer == correct_translation
 
-    # Store answer only if this question hasn't been recorded yet
-    if current_index >= len(session_data["answers"]):
-        if is_correct:
-            session_data["correct_count"] += 1
+    if is_correct:
+        session_data["correct_count"] += 1
 
-        session_data["answers"].append(
-            {
-                "word": word,
-                "user_answer": answer,
-                "correct_answer": correct_translation,
-                "is_correct": is_correct,
-            }
-        )
+    # Record the new answer
+    record = {
+        "word": word,
+        "user_answer": answer,
+        "correct_answer": correct_translation,
+        "is_correct": is_correct,
+        "attempted": True,  # Adding 'attempted' for clarity in the template (though not strictly necessary)
+    }
+    session_data["answers"].append(record)
 
-    return JSONResponse(
-        {
-            "is_correct": is_correct,
-            "current_index": current_index,
-            "next_index": current_index + 1,
-            "total_questions": session_data["total_questions"],
-            "user_answer": answer,
-            "correct_answer": correct_translation,
-        }
-    )
+    # Return the record data for client-side feedback
+    return JSONResponse(record)
 
 
 # --- Result Route ---
@@ -246,21 +219,27 @@ async def show_result(request: Request):
     """Displays the final quiz result page."""
     session_data = user_sessions.get(SESSION_ID)
 
-    # Ensure the quiz is complete before showing results
-    if (
-        not session_data
-        or len(session_data["answers"]) < session_data["total_questions"]
-    ):
+    if not session_data:
+        # If no session, start a new quiz
         return RedirectResponse(url="/", status_code=302)
 
     correct_count = session_data["correct_count"]
     total_questions = session_data["total_questions"]
 
+    # Check if all questions have been attempted
+    if len(session_data["answers"]) < total_questions:
+        # Optionally redirect back to the last unattempted question
+        last_unanswered_index = len(session_data["answers"])
+        return RedirectResponse(url=f"/quiz/{last_unanswered_index}", status_code=302)
+
     context = {
         "request": request,
         "correct_count": correct_count,
         "total_questions": total_questions,
-        "score_percentage": int((correct_count / total_questions) * 100),
+        # Avoid potential division by zero if total_questions is 0 (though protected by initial checks)
+        "score_percentage": (
+            int((correct_count / total_questions) * 100) if total_questions else 0
+        ),
         "answers": session_data["answers"],
     }
 

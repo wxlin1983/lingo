@@ -1,265 +1,163 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Duolingo Word Quiz</title>
+    <title>Quiz Question {{ current_index + 1 }}</title>
     <style>
-        /* CSS styles remain the same as before for visual consistency */
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f7f7f7;
-            text-align: center;
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-        }
-        .container {
-            flex-grow: 1;
-            max-width: 600px;
-            margin: 20px auto;
-            background-color: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-            text-align: center;
-        }
-        .progress-bar {
-            height: 8px;
-            background-color: #e0e0e0;
-            border-radius: 4px;
-            margin-bottom: 30px;
-            overflow: hidden;
-        }
-        .progress {
-            height: 100%;
-            background-color: #58cc02; /* Duolingo Green */
-            transition: width 0.3s ease-in-out;
-        }
-        h1 {
-            color: #4a4a4a;
-            margin-bottom: 40px;
-            font-size: 2.2em;
-        }
-        .word-display {
-            font-size: 3em;
-            font-weight: bold;
-            margin-bottom: 50px;
-            color: #3b3b3b;
-        }
-        .option-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-        }
-        .option-button {
-            background-color: white;
-            color: #1cb0f6; /* Duolingo Blue */
-            border: 2px solid #e5e5e5;
-            padding: 20px 10px;
-            border-radius: 12px;
-            font-size: 1.1em;
-            font-weight: bold;
-            cursor: pointer;
-            transition: background-color 0.2s, border-color 0.2s;
-            text-align: center;
-            min-height: 80px; 
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .option-button:hover {
-            background-color: #f0f0f0;
-            border-color: #1cb0f6;
-        }
-
-        /* --- Feedback Bar Styles --- */
-        .feedback-bar {
-            width: 100%;
-            padding: 20px 0;
-            margin-top: auto;
-            background-color: #ffc9c9; /* Light Red for Incorrect */
-            border-top: 1px solid #e5e5e5;
-        }
-        .feedback-container {
-            max-width: 600px;
-            margin: 0 auto;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 0 20px;
-        }
-        .message-box {
-            width: 100%;
-            padding: 15px 20px;
-            border-radius: 12px;
-            text-align: left;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        .incorrect {
-            background-color: #ffc9c9;
-            color: #ff4747; /* Darker Red */
-            border-bottom: 5px solid #ff4747;
-        }
-        .message-box h3 {
-            margin-top: 0;
-            font-size: 1.3em;
-        }
-        .message-box p {
-            margin: 5px 0;
-            font-size: 1.1em;
-        }
-
-        /* Continue Button Style */
-        .continue-button {
-            width: 100%;
-            background-color: #ff4747; /* Red for Incorrect path */
-            color: white;
-            border: none;
-            padding: 15px;
-            border-radius: 12px;
-            font-size: 1.2em;
-            font-weight: bold;
-            cursor: pointer;
-            transition: background-color 0.2s;
-            text-transform: uppercase;
-        }
-        .continue-button:hover {
-            background-color: #e63939;
-        }
+        /* 簡單的樣式，用於突出顯示答案 */
+        .correct-text { color: green; font-weight: bold; }
+        .incorrect-text { color: red; }
     </style>
 </head>
 <body>
-    <div class="container">
-        {% if error %}
-            <p style="color: red;">{{ error }}</p>
-            <a href="/" class="restart-button" style="display: block; margin-top: 20px;">Try Reloading</a>
-        {% else %}
-            {# --- Progress Bar Calculation --- #}
-            {% set completed_questions = current_index %}
-            {# If feedback is present, we are reviewing a previous (incorrect) answer #}
-            {% if feedback %}
-                {% set current_progress = (current_index / total_questions) * 100 %}
-            {% else %}
-                {% set current_progress = (current_index / total_questions) * 100 %}
-            {% endif %}
+    <h1>Question {{ current_index + 1 }} / {{ total_questions }}</h1>
+    
+    <h2>Word: <strong>{{ word }}</strong></h2>
 
-            <div class="progress-bar">
-                <div class="progress" style="width: {{ current_progress }}%;"></div>
-            </div>
+    <div id="quiz-form-container">
+        <form id="quiz-form">
+            <input type="hidden" name="word" value="{{ word }}">
+            <input type="hidden" name="current_index" value="{{ current_index }}">
 
-            <h1>What does this word mean?</h1>
-            <div class="word-display">{{ word }}</div>
-
-            {# --- Display Options Grid (only if not showing feedback) --- #}
-            {% if not feedback %}
-                {# The action URL is only used by JS/Fetch, not a standard form submission #}
-                <form action="/submit_answer" method="post" id="quizForm">
-                    <input type="hidden" name="word" value="{{ word }}">
-                    <input type="hidden" name="current_index" value="{{ current_index }}">
+            {% set is_correctly_answered = answer_record and answer_record.is_correct %}
+            
+            {% for option in options %}
+                <div>
+                    <input 
+                        type="radio" 
+                        id="option-{{ loop.index }}" 
+                        name="answer" 
+                        value="{{ option }}"
+                        data-option-value="{{ option }}"
+                        {% if answer_record and answer_record.user_answer == option %} 
+                            checked 
+                        {% endif %}
+                        
+                        {# 只有在已經正確回答時才禁用選項 #}
+                        {% if is_correctly_answered %} 
+                            disabled 
+                        {% endif %}
+                    >
+                    <label for="option-{{ loop.index }}">{{ option }}</label>
                     
-                    <div class="option-grid">
-                        {% for option in options %}
-                            <button type="button" 
-                                    class="option-button"
-                                    data-answer="{{ option }}" 
-                                    onclick="submitAnswer(this)">
-                                {{ option }}
-                            </button>
-                        {% endfor %}
-                    </div>
-                </form>
-            {% endif %}
+                    {# 顯示作答標記 #}
+                    <span class="feedback-icon" id="feedback-{{ loop.index }}">
+                        {% if answer_record %}
+                            {# 只有在嘗試過後才顯示 #}
+                            {% if answer_record.user_answer == option %}
+                                {% if answer_record.is_correct %}
+                                    <strong class="correct-text">(Your Correct Answer)</strong> 🟢
+                                {% else %}
+                                    <strong class="incorrect-text">(Your Incorrect Answer)</strong> 🔴
+                                {% endif %}
+                            {% elif option == correct_translation %}
+                                {# 顯示正確答案 (在回答錯誤或正確時) #}
+                                <strong class="correct-text"> (Correct) </strong> ✅
+                            {% endif %}
+                        {% endif %}
+                    </span>
+                </div>
+            {% endfor %}
 
+            <br>
+            <button type="submit" id="submit-btn" 
+                {% if is_correctly_answered %} disabled {% endif %}
+            >
+                Submit Answer
+            </button>
+            <p id="submission-message" style="margin-top: 10px;"></p>
+        </form>
+    </div>
+
+    <div style="margin-top: 20px;">
+        {% if not is_first_question %}
+            <a href="/quiz/{{ current_index - 1 }}">
+                <button>⬅️ Previous</button>
+            </a>
+        {% endif %}
+
+        {% if not is_last_question %}
+            <a href="/quiz/{{ current_index + 1 }}">
+                <button>Next ➡️</button>
+            </a>
+        {% else %}
+            <a href="/result">
+                <button>Finish Quiz 🎉</button>
+            </a>
         {% endif %}
     </div>
 
-    {# --- Feedback Bar (Display ONLY if feedback is present/incorrect) --- #}
-    {% if feedback and not feedback.is_correct %}
-        {% set next_index = current_index + 1 %}
-        {% set is_last_question = next_index >= total_questions %}
-
-        <div class="feedback-bar">
-            <div class="feedback-container">
-                <div class="message-box incorrect">
-                    <h3>❌ Answer Incorrect</h3>
-                    <p>You answered: **{{ feedback.user_answer }}**</p>
-                    <p>The correct translation for **{{ word }}** is: **{{ feedback.correct_answer }}**</p>
-                </div>
-
-                {# Continue Button: either to next question or to results #}
-                {% if is_last_question %}
-                    <form action="/result" method="get" style="width: 100%;">
-                        <button type="submit" class="continue-button">View Results</button>
-                    </form>
-                {% else %}
-                    <form action="/quiz/{{ next_index }}" method="get" style="width: 100%;">
-                        <button type="submit" class="continue-button">Continue</button>
-                    </form>
-                {% endif %}
-            </div>
-        </div>
-    {% endif %}
-
-    {# --- JavaScript for API Call and Redirection --- #}
-    {% if not feedback %}
     <script>
-        function submitAnswer(button) {
-            // Disable all buttons to prevent double-click
-            document.querySelectorAll('.option-button').forEach(btn => btn.disabled = true);
+        document.getElementById('quiz-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
             
-            const form = document.getElementById('quizForm');
-            const word = form.querySelector('input[name="word"]').value;
-            const current_index = form.querySelector('input[name="current_index"]').value;
-            const answer = button.getAttribute('data-answer');
+            const form = e.target;
+            const submitButton = document.getElementById('submit-btn');
+            const messageDisplay = document.getElementById('submission-message');
+            const radioInputs = document.querySelectorAll('input[name="answer"]');
 
-            // Construct FormData object
-            const formData = new FormData();
-            formData.append('word', word);
-            formData.append('current_index', current_index);
-            formData.append('answer', answer);
+            const selectedInput = document.querySelector('input[name="answer"]:checked');
+            if (!selectedInput) {
+                alert('Please select an answer before submitting.');
+                return;
+            }
 
-            fetch('/submit_answer', {
-                method: 'POST',
-                body: formData,
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then(data => {
-                const nextUrl = data.next_index >= data.total_questions ? '/result' : `/quiz/${data.next_index}`;
-                
-                if (data.is_correct) {
-                    // CORRECT: Redirect immediately to the next question/result
-                    window.location.href = nextUrl;
-                } else {
-                    // INCORRECT: Redirect to the current question with feedback data encoded
-                    const feedback = {
-                        is_correct: false,
-                        user_answer: data.user_answer,
-                        correct_answer: data.correct_answer
-                    };
-                    const feedbackJson = JSON.stringify(feedback);
-                    const encodedFeedback = encodeURIComponent(feedbackJson);
+            const formData = new FormData(form);
+            const data = new URLSearchParams(formData).toString();
+
+            try {
+                const response = await fetch('/submit_answer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: data
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    // 1. 處理成功提交
                     
-                    window.location.href = `/quiz/${data.current_index}?feedback_data=${encodedFeedback}`;
-                }
-            })
-            .catch(error => {
-                console.error('Submission error:', error);
-                alert('An error occurred during submission. Please try again.');
-                // Re-enable buttons on error
-                document.querySelectorAll('.option-button').forEach(btn => btn.disabled = false);
-            });
-        }
-    </script>
-    {% endif %}
+                    // 2. 禁用所有選項和提交按鈕
+                    submitButton.disabled = true;
+                    radioInputs.forEach(input => input.disabled = true);
+                    
+                    // 3. 顯示反饋訊息
+                    if (result.is_correct) {
+                        messageDisplay.className = 'correct-text';
+                        messageDisplay.textContent = '🎉 Correct! You can now move to the next question.';
+                    } else {
+                        messageDisplay.className = 'incorrect-text';
+                        messageDisplay.textContent = `❌ Incorrect. The correct answer was: ${result.correct_answer}.`;
+                    }
 
+                    // 4. 標記選項 (使用 data-option-value 查找選項)
+                    radioInputs.forEach((input, index) => {
+                        const optionValue = input.getAttribute('data-option-value');
+                        const feedbackSpan = document.getElementById(`feedback-${index + 1}`);
+                        feedbackSpan.innerHTML = ''; // 清除現有的 Jinja2 標記 (如果有)
+
+                        if (optionValue === result.user_answer) {
+                            input.checked = true; // 確保選中的選項被標記
+                            if (result.is_correct) {
+                                feedbackSpan.innerHTML = '<strong class="correct-text">(Your Correct Answer)</strong> 🟢';
+                            } else {
+                                feedbackSpan.innerHTML = '<strong class="incorrect-text">(Your Incorrect Answer)</strong> 🔴';
+                            }
+                        } else if (optionValue === result.correct_answer) {
+                            feedbackSpan.innerHTML = '<strong class="correct-text"> (Correct) </strong> ✅';
+                        }
+                    });
+
+                } else {
+                    // 處理服務器返回的錯誤 (例如，重複提交)
+                    messageDisplay.className = 'incorrect-text';
+                    messageDisplay.textContent = 'Error submitting answer: ' + (result.error || 'Server error.');
+                }
+            } catch (error) {
+                messageDisplay.className = 'incorrect-text';
+                messageDisplay.textContent = 'Network error: Could not connect to the server.';
+                console.error('Fetch error:', error);
+            }
+        });
+    </script>
 </body>
 </html>
