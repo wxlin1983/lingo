@@ -1,305 +1,146 @@
-/* static/style.css - 語言測驗應用程式樣式 */
+/* Improved static/style.css
+   - CSS variables for consistent theming
+   - Accessible focus styles
+   - Responsive typography
+   - Polished option/button visuals and subtle animations
+*/
 
-/* --- 基礎設定 --- */
-body {
-    font-family: 'Arial', 'Helvetica Neue', Helvetica, sans-serif;
-    background-color: #f7f7f7; /* 淺灰色背景 */
-    color: #3c3c3c;
-    margin: 0;
-    padding: 20px; /* 身體周圍一些填充 */
-    line-height: 1.6;
-    display: flex;
-    flex-direction: column;
-    align-items: center; /* 使內容居中 */
-    min-height: 100vh; /* 確保 body 至少佔滿視窗高度 */
+:root{
+  --bg: #f7f7f7;
+  --surface: #ffffff;
+  --text: #222428;
+  --muted: #6b7280;
+  --accent-green: #58cc02;
+  --accent-blue: #1cb0f6;
+  --success: #58a700;
+  --danger: #ff4b4b;
+  --card-radius: 12px;
+  --gap: 16px;
+  --max-width: 760px;
 }
 
-/* --- 主要內容容器 --- */
-.container {
-    width: 100%;
-    max-width: 650px; /* 限制最大寬度 */
-    margin-bottom: 20px; /* 與導航按鈕的間距 */
-    padding: 30px;
-    background-color: #ffffff;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); /* 輕微陰影 */
-    border-radius: 12px;
-    display: flex;
-    flex-direction: column;
-    align-items: center; /* 使容器內的內容居中 */
-    box-sizing: border-box; /* 確保 padding 不會增加總寬度 */
+/* Base */
+html,body{height:100%;}
+body{
+  margin:0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  line-height:1.45;
+  display:flex;
+  justify-content:center;
+  /* add bottom padding so fixed nav doesn't overlap page content */
+  padding:28px 20px 110px 20px;
 }
 
-/* --- 標題和問題文字 --- */
-.header-question-status {
-    width: 100%;
-    text-align: center;
-    margin-bottom: 25px;
+.container{
+  width:100%;
+  max-width:var(--max-width);
+  background:var(--surface);
+  border-radius:var(--card-radius);
+  padding:30px;
+  box-shadow:0 8px 30px rgba(16,24,40,0.06);
+  box-sizing:border-box;
 }
 
-.question-status {
-    font-size: 1.2em;
-    font-weight: 600;
-    color: #58cc02; /* Duolingo 綠色 */
-    margin-bottom: 10px;
-    display: block; /* 確保佔滿一行 */
+/* Typography */
+.header-question-status{ text-align:center; margin-bottom:12px; }
+.question-status{ font-size:0.98rem; font-weight:700; color:var(--accent-green); }
+.main-question{
+  margin:10px 0 28px 0;
+  font-size:clamp(1.4rem, 2.5vw, 2.2rem);
+  font-weight:800;
+  text-align:center;
+  color:var(--text);
+  line-height:1.08;
 }
 
-.main-question {
-    font-size: 2.8em; /* 更大的問題字體 */
-    font-weight: 900;
-    color: #3c3c3c;
-    margin-bottom: 40px; /* 與選項的間距 */
-    text-align: center;
-    line-height: 1.2;
+/* Options */
+.options-container{ display:flex; flex-direction:column; gap:var(--gap); margin-bottom:18px; }
+.option-item{ position:relative; }
+
+/* visually-hidden but keep accessible */
+.option-input{ position:absolute; opacity:0; height:1px; width:1px; left:-9999px; }
+
+.option-label{
+  display:flex; align-items:center; gap:12px; padding:18px 20px; border-radius:12px;
+  border:1px solid rgba(16,24,40,0.06); background:linear-gradient(180deg, #fff, #fbfbfd);
+  font-weight:700; font-size:1rem; color:var(--text);
+  transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+  user-select:none;
 }
 
-/* --- 選項按鈕區塊 (Duolingo 風格優化) --- */
-.options-container {
-    width: 100%; /* 讓選項容器佔滿可用寬度 */
-    display: flex;
-    flex-direction: column;
-    gap: 15px; /* 選項之間的間隔 */
-    margin-bottom: 30px;
+.option-label:hover{ transform:translateY(-2px); box-shadow:0 6px 18px rgba(16,24,40,0.06); border-color:rgba(28,176,246,0.12); }
+
+/* checked+focus/active styling (applied using + selector in markup) */
+.option-input:checked + .option-label{
+  outline:2px solid rgba(28,176,246,0.12);
+  border-color:var(--accent-blue);
+  background:linear-gradient(180deg, #f0fbff, #e7f8ff);
+  color:var(--accent-blue);
 }
 
-.option-item {
-    display: block;
-    position: relative;
-    cursor: pointer;
+.option-input:disabled + .option-label{ opacity:0.7; cursor:not-allowed; background: #fafafa; }
+
+.feedback-icon{ margin-left:auto; font-weight:700; font-size:0.95rem; }
+.correct-text{ color:var(--success); }
+.incorrect-text{ color:var(--danger); }
+
+/* Visual flags applied by JS add/remove classes */
+.option-item.correct .option-label{ border-color:rgba(88,167,0,0.12); background:linear-gradient(180deg,#f6fff0,#edfbe6);} 
+.option-item.incorrect .option-label{ border-color:rgba(255,75,75,0.12); background:linear-gradient(180deg,#fff5f5,#fff0f0);} 
+
+/* Footer / submit */
+.footer-action-buttons{ width:100%; padding-top:14px; border-top:1px solid rgba(16,24,40,0.04); }
+.btn{ display:inline-block; width:100%; padding:14px 20px; font-size:1rem; font-weight:800; border-radius:10px; border:none; cursor:pointer; box-sizing:border-box; }
+.btn-primary{ background:var(--accent-green); color:#fff; }
+.btn-primary:hover:not(:disabled){ filter:brightness(.96); }
+.btn-primary:disabled{ opacity:.65; cursor:not-allowed; }
+
+/* Submission messages */
+.submission-message{ margin-top:12px; padding:12px; border-radius:8px; font-weight:700; text-align:center; }
+.message-correct{ background:linear-gradient(180deg,#f0f9e8,#ecf9de); color:var(--success); }
+.message-wrong{ background:linear-gradient(180deg,#fff2f2,#ffecec); color:var(--danger); }
+
+/* Navigation */
+.navigation-controls{
+  /* fixed at the bottom center of the viewport */
+  position:fixed;
+  left:50%;
+  transform:translateX(-50%);
+  bottom:20px;
+  width:min(var(--max-width), calc(100% - 40px));
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:center;
+  padding:8px;
+  z-index:60;
 }
 
-/* 隱藏原生 Radio 按鈕 */
-.option-input {
-    position: absolute;
-    opacity: 0;
-    cursor: pointer;
-    height: 0;
-    width: 0;
+.nav-btn{ padding:12px 18px; border-radius:10px; background:#fff; border:1px solid rgba(16,24,40,0.06); text-decoration:none; color:var(--text); font-weight:800; }
+.nav-btn.finish-btn{ background:var(--accent-blue); color:#fff; border-color:var(--accent-blue); }
+
+/* Results */
+.result-summary{ text-align:center; margin-bottom:22px; background:linear-gradient(180deg,#f3fff3,#eaffea); border:1px solid var(--accent-green); border-radius:10px; padding:18px; }
+.result-score{ font-size:clamp(2rem,6vw,3rem); font-weight:900; color:var(--accent-green); margin:8px 0 0 0; }
+
+.review-heading{ border-bottom:1px solid rgba(16,24,40,0.06); padding-bottom:10px; margin-top:28px; margin-bottom:18px; text-align:center; font-size:1.2rem; }
+.review-item{ padding:14px; border-radius:10px; background:#fff; box-shadow:0 3px 10px rgba(16,24,40,0.04); margin-bottom:14px; }
+.review-item h3{ margin:0 0 8px 0; font-size:1.05rem; }
+.review-item p{ margin:4px 0; color:var(--muted); }
+
+/* Focus styles for keyboard accessibility */
+a:focus, button:focus, .option-input:focus + .option-label{ outline:3px solid rgba(28,176,246,0.18); outline-offset:3px; }
+
+/* Responsive tweaks */
+@media (max-width:520px){
+  .container{ padding:18px; }
+  .option-label{ padding:14px 14px; font-size:0.98rem; }
+  .main-question{ font-size:1.35rem; }
 }
 
-.option-label {
-    display: flex;
-    align-items: center;
-    justify-content: flex-start; /* 文字靠左對齊 */
-    padding: 24px 25px; /* 增加垂直填充 (上下)，讓按鈕更高 */
-    border: 2px solid #e5e5e5;
-    border-radius: 16px; /* 圓角 */
-    background-color: white;
-    transition: all 0.2s ease-in-out;
-    font-size: 1.4em; /* 增加字體大小 */
-    font-weight: 700;
-    text-align: left;
-    user-select: none; /* 防止文字被選中 */
-    color: #3c3c3c; /* 預設文字顏色 */
-}
-
-/* Hover 狀態 */
-.option-label:hover:not(.disabled) {
-    background-color: #f0f0f0;
-    border-color: #a7e04f; /* Duolingo 風格的綠色邊框提示 */
-}
-
-/* 選中狀態 */
-.option-input:checked + .option-label {
-    border-color: #1cb0f6; /* 醒目的藍色邊框 */
-    background-color: #e6f7ff; /* 淺藍色背景 */
-    color: #1cb0f6; /* 選中時文字也變藍 */
-}
-
-/* 禁用狀態 */
-.option-input:disabled + .option-label {
-    background-color: #f7f7f7;
-    color: #aaa;
-    cursor: not-allowed;
-    border-color: #e5e5e5;
-}
-
-/* --- 回饋圖示和文字 --- */
-.feedback-icon {
-    margin-left: auto; /* 將圖示推到最右邊 */
-    font-weight: normal;
-    font-size: 0.9em; /* 回饋文字小一點 */
-    padding-left: 15px; /* 與選項文字的間距 */
-    white-space: nowrap; /* 防止回饋文字換行 */
-}
-
-.correct-text { color: #58a700; font-weight: bold; } /* 深綠色 */
-.incorrect-text { color: #ff4b4b; font-weight: bold; } /* 紅色 */
-
-/* --- 提交按鈕 --- */
-.footer-action-buttons {
-    width: 100%;
-    padding-top: 20px;
-    border-top: 2px solid #eeeeee;
-    text-align: center; /* 按鈕居中 */
-}
-
-.btn {
-    padding: 18px 35px; /* 更大的按鈕 */
-    font-size: 1.2em;
-    font-weight: 700;
-    border: none;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: background-color 0.2s, opacity 0.2s;
-    text-decoration: none; /* 適用於連結按鈕 */
-    display: inline-block;
-    width: 100%; /* 讓按鈕佔滿寬度 */
-    box-sizing: border-box; /* 確保 padding 不會增加總寬度 */
-}
-
-.btn-primary {
-    background-color: #58cc02; /* Duolingo 綠色 */
-    color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-    background-color: #4ead02;
-}
-
-.btn-primary:disabled {
-    background-color: #ccc;
-    cursor: not-allowed;
-    opacity: 0.7;
-}
-
-/* --- 提交後訊息 --- */
-.submission-message {
-    padding: 15px;
-    margin-top: 15px;
-    border-radius: 8px;
-    font-weight: 700;
-    text-align: center;
-    display: block; /* 確保佔滿一行 */
-}
-
-.message-correct {
-    background-color: #eaf7d6;
-    color: #58cc02;
-}
-
-.message-wrong {
-    background-color: #ffe0e0;
-    color: #ff4b4b;
-}
-
-/* --- 導航按鈕 --- */
-.navigation-controls {
-    width: 100%;
-    max-width: 650px; /* 與主容器相同寬度 */
-    display: flex;
-    justify-content: space-between;
-    margin-top: 20px;
-}
-
-.navigation-controls .nav-btn {
-    padding: 15px 25px;
-    border: 2px solid #e5e5e5;
-    border-radius: 12px;
-    background: white;
-    color: #3c3c3c;
-    cursor: pointer;
-    font-weight: 700;
-    font-size: 1.1em;
-    transition: background-color 0.2s, border-color 0.2s;
-    text-decoration: none;
-    display: inline-block; /* 確保連結可作為按鈕 */
-}
-
-.navigation-controls .nav-btn:hover {
-    background-color: #f0f0f0;
-    border-color: #cccccc;
-}
-
-.navigation-controls .finish-btn {
-    background-color: #1cb0f6; /* 藍色完成按鈕 */
-    color: white;
-    border-color: #1cb0f6;
-}
-
-.navigation-controls .finish-btn:hover {
-    background-color: #148fcf;
-    border-color: #148fcf;
-}
-
-
-/* --- 結果頁面專用樣式 --- */
-.result-summary {
-    text-align: center;
-    margin-bottom: 30px;
-    background-color: #e6ffe6; /* 淺綠色背景 */
-    border: 2px solid #58cc02;
-    border-radius: 10px;
-    padding: 20px;
-}
-
-.result-summary h2 {
-    color: #58cc02;
-    margin-top: 0;
-}
-
-.result-score {
-    font-size: 3.5em; /* 更大的得分數字 */
-    font-weight: 900;
-    color: #58cc02;
-    margin-top: 10px;
-}
-
-.review-heading {
-    border-bottom: 2px solid #ddd;
-    padding-bottom: 10px;
-    color: #3c3c3c;
-    margin-top: 40px;
-    margin-bottom: 25px;
-    font-size: 1.8em;
-    text-align: center;
-}
-
-.review-item {
-    margin-bottom: 25px;
-    padding: 18px;
-    border-radius: 10px;
-    background-color: #fff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.review-item h3 {
-    margin-top: 0;
-    margin-bottom: 12px;
-    color: #3c3c3c;
-    font-size: 1.4em;
-}
-
-.review-item p {
-    margin-bottom: 8px;
-    font-size: 1.1em;
-}
-
-.review-item strong.label { /* 為了區分，給 label 加一個 class */
-    display: inline-block;
-    min-width: 120px;
-    color: #666;
-    font-weight: normal;
-}
-
-.review-correct { color: #58a700; font-weight: bold; }
-.review-incorrect { color: #ff4b4b; font-weight: bold; }
-
-.start-new-quiz-btn {
-    background-color: #1cb0f6; /* 藍色開始按鈕 */
-    color: white;
-    padding: 18px 35px;
-    font-size: 1.2em;
-    border-radius: 12px;
-    font-weight: 700;
-    border: none;
-    cursor: pointer;
-    transition: background-color 0.2s;
-    text-decoration: none;
-    display: inline-block;
-    margin-top: 30px;
-}
-
-.start-new-quiz-btn:hover {
-    background-color: #148fcf;
-}
+/* small utility classes */
+.text-center{ text-align:center; }
