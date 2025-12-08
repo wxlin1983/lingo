@@ -3,200 +3,262 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FastAPI Quiz</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <title>Language Quiz - Question {{ current_index + 1 }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
 </head>
 <body>
+    <div class="container">
+        
+        <div class="header-question-status">
+            <span class="question-status">Question {{ current_index + 1 }} of {{ total_questions }}</span>
+        </div>
 
-    <div class="progress-bar-container">
-        <div class="progress-bar" style="width: {{ ((current_index + 1) / total_questions) * 100 }}%;"></div>
-    </div>
+        <h1 class="main-question">What is the translation of "{{ word }}"?</h1>
 
-    <div class="main-content">
-        <h1>Which one of these is "{{ word }}"?</h1>
-        <p class="question-info">Question {{ current_index + 1 }} of {{ total_questions }}</p>
-
-        <form id="quiz-form" method="POST" action="/submit_answer">
-            <input type="hidden" name="current_index" value="{{ current_index }}">
-
-            <div class="options-container" id="options-container">
+        <form id="quiz-form">
+            <div class="options-container">
                 {% for option in options %}
+                    {% set is_disabled = answer_record is not none %}
                     {% set is_checked = answer_record and answer_record.user_answer == option %}
-                    <div class="option-item 
-                        {% if answer_record %}
-                            {% if option == answer_record.correct_answer %}
-                                correct
-                            {% elif option == answer_record.user_answer and not answer_record.is_correct %}
-                                incorrect
-                            {% endif %}
+                    
+                    {% set option_class = '' %}
+                    {% if is_checked %}
+                        {% if answer_record.is_correct %}
+                            {% set option_class = 'correct' %}
+                        {% else %}
+                            {% set option_class = 'incorrect' %}
                         {% endif %}
-                        ">
-                        <input 
-                            type="radio" 
-                            id="option-{{ loop.index }}" 
-                            name="answer" 
+                    {% endif %}
+
+                    <div class="option-item {{ option_class }}" data-value="{{ option }}">
+                        <input
+                            type="radio"
+                            id="option-{{ loop.index }}"
+                            name="answer"
                             value="{{ option }}"
                             class="option-input"
-                            data-translation="{{ option }}"
-                            {% if is_checked %} checked {% endif %}
-                            {% if answer_record %} disabled {% endif %}
-                            >
-                        <label for="option-{{ loop.index }}">{{ option }}</label>
+                            {% if is_checked %}checked{% endif %}
+                            {% if is_disabled %}disabled{% endif %}
+                            required
+                        />
+                        <label for="option-{{ loop.index }}" class="option-label">
+                            {{ option }}
+                            
+                            {% if is_checked %}
+                                <span class="feedback-icon">
+                                    {% if answer_record.is_correct %}
+                                        <span class="correct-text">✅ Correct!</span>
+                                    {% else %}
+                                        <span class="incorrect-text">❌ Wrong!</span>
+                                    {% endif %}
+                                </span>
+                            {% elif is_disabled and option == correct_translation %}
+                                <span class="feedback-icon">
+                                    <span class="correct-text">Correct Answer</span>
+                                </span>
+                            {% endif %}
+                        </label>
                     </div>
                 {% endfor %}
             </div>
+
+            <input type="hidden" name="current_index" value="{{ current_index }}">
             
             <div class="footer-action-buttons">
-                <button type="submit" id="submit-btn" class="btn btn-primary"
-                    {% if answer_record %} disabled {% endif %}
+                <div id="feedback-panel" class="submission-message" style="display: none;">
+                    </div>
+
+                <button 
+                    type="submit" 
+                    id="submit-btn" 
+                    class="btn btn-primary"
+                    {% if is_disabled %}disabled{% endif %}
                 >
-                    Submit Answer
+                    Check Answer
                 </button>
             </div>
         </form>
     </div>
 
-    <div id="feedback-panel" class="feedback-panel" 
-        {% if not answer_record %} style="display: none;" {% endif %}
-        >
-        {% if answer_record %}
-            {% if answer_record.is_correct %}
-                <h3 class="correct-text">✅ Correct!</h3>
-            {% else %}
-                <h3 class="incorrect-text">❌ Incorrect.</h3>
-                <p>The correct answer is: **{{ answer_record.correct_answer }}**</p>
-            {% endif %}
+    <div class="navigation-controls">
+        {% if not is_first_question %}
+            <a href="/quiz/{{ current_index - 1 }}" class="nav-btn">Previous</a>
+        {% else %}
+            <span style="visibility: hidden;">Previous</span>
+        {% endif %}
 
-            <div class="navigation-controls">
-                {% if not is_first_question %}
-                    <a href="/quiz/{{ current_index - 1 }}" class="btn btn-secondary">Previous ⬅️</a>
-                {% endif %}
-
-                {% if not is_last_question %}
-                    <a href="/quiz/{{ current_index + 1 }}" id="next-btn" class="btn btn-primary">Next ➡️</a>
-                {% else %}
-                    <a href="/result" id="finish-btn" class="btn btn-success">Finish Quiz 🎉</a>
-                {% endif %}
-            </div>
-
+        {% if is_last_question %}
+            <a href="/result" id="finish-btn-nav" class="nav-btn finish-btn" {% if not is_disabled %}style="pointer-events: none; opacity: 0.5;"{% endif %}>
+                Finish Quiz
+            </a>
+        {% else %}
+            <a href="/quiz/{{ current_index + 1 }}" id="next-btn-nav" class="nav-btn" {% if not is_disabled %}style="pointer-events: none; opacity: 0.5;"{% endif %}>
+                Next
+            </a>
         {% endif %}
     </div>
 
     <script>
         const form = document.getElementById('quiz-form');
         const submitButton = document.getElementById('submit-btn');
-        const optionsContainer = document.getElementById('options-container');
+        const optionsContainer = document.querySelector('.options-container');
         const feedbackPanel = document.getElementById('feedback-panel');
+        const nextButtonNav = document.getElementById('next-btn-nav');
+        const finishButtonNav = document.getElementById('finish-btn-nav');
+        
+        // Pass boolean safely from Jinja to JS
+        const isLastQuestion = {{ is_last_question | tojson }};
 
-        form.addEventListener('submit', async function(e) {
-            e.preventDefault(); // 阻止瀏覽器預設的表單提交
-            
-            // 檢查是否有選中選項
-            const selectedInput = form.querySelector('input[name="answer"]:checked');
-            if (!selectedInput) {
-                alert("Please select an answer.");
-                return;
-            }
-
-            // 禁用按鈕防止重複點擊
-            submitButton.disabled = true;
-
-            const formData = new FormData(form);
-            
-            try {
-                const response = await fetch('/submit_answer', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    // 1. 禁用所有選項 (防止更改答案)
-                    const radioInputs = optionsContainer.querySelectorAll('input[type="radio"]');
-                    radioInputs.forEach(input => input.disabled = true);
-                    
-                    // 2. 應用 CSS 樣式和視覺回饋
-                    applyFeedbackStyles(data, selectedInput.value);
-
-                    // 3. 顯示回饋面板和導航按鈕
-                    renderFeedbackPanel(data);
-
-                } else {
-                    // 如果伺服器返回錯誤 (例如: 已提交過答案), 重新啟用提交按鈕
-                    alert(data.error || "Submission failed.");
-                    submitButton.disabled = false;
-                }
-
-            } catch (error) {
-                console.error('Error submitting answer:', error);
-                alert('An unexpected error occurred.');
-                submitButton.disabled = false; // 出錯時重新啟用按鈕
-            }
-        });
-
-        // 函式: 根據提交結果更新樣式
+        // --- Core Style and Feedback Handlers ---
+        
+        // Applies 'correct'/'incorrect' classes to options based on result
         function applyFeedbackStyles(record, userAnswer) {
             const items = optionsContainer.querySelectorAll('.option-item');
             
             items.forEach(item => {
-                const input = item.querySelector('input');
-                const optionValue = input.value;
+                const optionValue = item.getAttribute('data-value');
+                const label = item.querySelector('.option-label');
+                
+                // Remove old feedback styles
+                item.classList.remove('correct', 'incorrect');
+                
+                // Remove existing text feedback icons
+                const existingIcon = label.querySelector('.feedback-icon');
+                if (existingIcon) {
+                    existingIcon.remove();
+                }
 
-                item.classList.remove('selected');
+                let iconHtml = '';
 
                 if (optionValue === record.correct_answer) {
-                    // 正確答案標記為綠色
+                    // 1. Mark the correct answer
                     item.classList.add('correct');
+                    iconHtml = '<span class="correct-text">✅ Correct!</span>';
                 } else if (optionValue === userAnswer && !record.is_correct) {
-                    // 錯誤答案標記為紅色
+                    // 2. Mark the user's incorrect choice
                     item.classList.add('incorrect');
+                    iconHtml = '<span class="incorrect-text">❌ Wrong!</span>';
+                }
+
+                // Add text feedback icon only for selected options or the correct answer
+                if (optionValue === userAnswer) {
+                    const feedbackIconSpan = document.createElement('span');
+                    feedbackIconSpan.className = 'feedback-icon';
+                    feedbackIconSpan.innerHTML = iconHtml;
+                    label.appendChild(feedbackIconSpan);
+                } else if (optionValue === record.correct_answer && !record.is_correct) {
+                    // If the user was wrong, explicitly mark the correct option
+                    const feedbackIconSpan = document.createElement('span');
+                    feedbackIconSpan.className = 'feedback-icon';
+                    feedbackIconSpan.innerHTML = '<span class="correct-text">Correct Answer</span>';
+                    label.appendChild(feedbackIconSpan);
                 }
             });
         }
-
-        // 函式: 渲染回饋面板
-        function renderFeedbackPanel(record) {
-            let panelContent = '';
-            
-            if (record.is_correct) {
-                panelContent += '<h3 class="correct-text">✅ Correct!</h3>';
-            } else {
-                panelContent += '<h3 class="incorrect-text">❌ Incorrect.</h3>';
-                panelContent += `<p>The correct answer is: <strong>${record.correct_answer}</strong></p>`;
-            }
-
-            // 導航控制項
-            const currentIndex = parseInt(document.querySelector('input[name="current_index"]').value);
-            const totalQuestions = parseInt('{{ total_questions }}');
-
-            panelContent += '<div class="navigation-controls">';
-
-            // Previous Button
-            if (currentIndex > 0) {
-                panelContent += `<a href="/quiz/${currentIndex - 1}" class="btn btn-secondary">Previous ⬅️</a>`;
-            }
-
-            // Next/Finish Button
-            if (currentIndex < totalQuestions - 1) {
-                panelContent += `<a href="/quiz/${currentIndex + 1}" id="next-btn" class="btn btn-primary">Next ➡️</a>`;
-            } else {
-                panelContent += `<a href="/result" id="finish-btn" class="btn btn-success">Finish Quiz 🎉</a>`;
-            }
-
-            panelContent += '</div>';
-
-            feedbackPanel.innerHTML = panelContent;
-            feedbackPanel.style.display = 'block'; // 顯示回饋面板
+        
+        // Disables all radio inputs
+        function disableOptions() {
+            const radioInputs = optionsContainer.querySelectorAll('input[type="radio"]');
+            radioInputs.forEach(input => input.disabled = true);
         }
 
-        // 頁面載入時，如果已有答案，確保啟用面板並禁用按鈕
+        // --- Initialization on Page Load (Handles Jinja pre-answered state) ---
+
         window.onload = () => {
-             if ({{ 'true' if answer_record else 'false' }}) {
+            // Safely retrieve answer_record from Jinja
+            const answerRecordData = {{ answer_record | tojson }};
+            
+            if (answerRecordData && answerRecordData.attempted) {
+                // If already answered, disable options/submit button, and show feedback
+                disableOptions();
                 submitButton.disabled = true;
+
+                // Show submission message
                 feedbackPanel.style.display = 'block';
+                feedbackPanel.classList.add(answerRecordData.is_correct ? 'message-correct' : 'message-wrong');
+                feedbackPanel.innerHTML = answerRecordData.is_correct ? 'Excellent! The translation is correct!' : `Wrong. The correct answer is: **${answerRecordData.correct_answer}**`;
+                
+                // Enable navigation button
+                const navButton = isLastQuestion ? finishButtonNav : nextButtonNav;
+                if (navButton) {
+                    navButton.style.pointerEvents = 'auto';
+                    navButton.style.opacity = '1';
+                }
             }
         };
+
+
+        // --- Form Submission Handler (AJAX) ---
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(form);
+            const userAnswer = formData.get('answer');
+
+            if (!userAnswer) {
+                alert('Please select an option!');
+                return;
+            }
+
+            // Disable button to prevent double-submission
+            submitButton.disabled = true;
+
+            try {
+                const response = await fetch('/submit_answer', {
+                    method: 'POST',
+                    body: new URLSearchParams(formData),
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    }
+                });
+
+                const record = await response.json();
+
+                if (response.ok) {
+                    disableOptions(); // Disable all options
+                    
+                    // 1. Apply visual feedback styles
+                    applyFeedbackStyles(record, userAnswer);
+
+                    // 2. Display submission message
+                    feedbackPanel.style.display = 'block';
+                    feedbackPanel.classList.remove('message-correct', 'message-wrong');
+                    
+                    if (record.is_correct) {
+                        feedbackPanel.classList.add('message-correct');
+                        feedbackPanel.innerHTML = 'Excellent! The translation is correct!';
+                    } else {
+                        feedbackPanel.classList.add('message-wrong');
+                        feedbackPanel.innerHTML = `Wrong. The correct answer is: **${record.correct_answer}**`;
+                    }
+
+                    // 3. Enable navigation button
+                    const navButton = isLastQuestion ? finishButtonNav : nextButtonNav;
+                    if (navButton) {
+                        navButton.style.pointerEvents = 'auto';
+                        navButton.style.opacity = '1';
+                    }
+
+                } else {
+                    // Handle server error (e.g., already answered)
+                    console.error("Submission error:", record.error);
+                    submitButton.disabled = false; // Re-enable button
+                }
+
+            } catch (error) {
+                console.error('Fetch error:', error);
+                submitButton.disabled = false; // Re-enable button
+            }
+        });
+        
+        // --- Option Click Event (Re-enables submit button if an option is clicked) ---
+        optionsContainer.addEventListener('change', () => {
+            // Re-enable submit button if it was disabled by the form submission logic
+            if (!submitButton.disabled) {
+                submitButton.disabled = false;
+            }
+        });
 
     </script>
 </body>
