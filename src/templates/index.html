@@ -35,6 +35,8 @@
 
     <script>
         const currentIndex = {{ current_index }};
+        // We'll store the fetched options array here so we can look up indices later
+        let currentOptions = [];
 
         async function loadQuestion() {
             try {
@@ -43,6 +45,9 @@
 
                 const data = await response.json();
 
+                // Store options for later use in submission
+                currentOptions = data.options;
+
                 document.getElementById('word-display').innerText = data.word;
                 document.getElementById('current-q').innerText = data.current_index + 1;
                 document.getElementById('total-q').innerText = data.total_questions;
@@ -50,11 +55,14 @@
                 const optionsContainer = document.getElementById('options-container');
                 optionsContainer.innerHTML = '';
 
-                data.options.forEach(option => {
+                // CHANGED: forEach now uses the index 'i'
+                data.options.forEach((option, i) => {
                     const btn = document.createElement('button');
                     btn.className = 'option-btn';
                     btn.innerText = option;
-                    btn.onclick = () => submitAnswer(option, btn);
+
+                    // Pass the integer index 'i' to the submit handler
+                    btn.onclick = () => submitAnswer(i, btn);
 
                     if (data.answer_record) {
                         btn.classList.add('disabled');
@@ -75,12 +83,14 @@
             }
         }
 
-        async function submitAnswer(selectedOption, btnElement) {
+        // CHANGED: Accepts integer index instead of string
+        async function submitAnswer(selectedIndex, btnElement) {
             const allBtns = document.querySelectorAll('.option-btn');
             allBtns.forEach(b => b.classList.add('disabled'));
 
             const formData = new FormData();
-            formData.append('answer', selectedOption);
+            // Send the index as expected by the new backend
+            formData.append('selected_option_index', selectedIndex);
             formData.append('current_index', currentIndex);
 
             try {
@@ -88,12 +98,20 @@
                     method: 'POST',
                     body: formData
                 });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    alert("Error: " + errorData.error);
+                    return;
+                }
+
                 const result = await response.json();
 
                 allBtns.forEach(b => {
                     if (b.innerText === result.correct_answer) {
                         b.classList.add('correct');
                     }
+                    // We check if this button is the one clicked by comparing element reference
                     if (b === btnElement && !result.is_correct) {
                         b.classList.add('incorrect');
                     }
@@ -101,7 +119,7 @@
 
                 const feedback = document.getElementById('feedback-message');
                 feedback.innerText = result.is_correct ? "Correct!" : `Wrong! The answer is ${result.correct_answer}`;
-                feedback.style.color = result.is_correct ? "#155724" : "#721c24"; // Using hex to match CSS variables
+                feedback.style.color = result.is_correct ? "#155724" : "#721c24";
 
                 const totalQ = parseInt(document.getElementById('total-q').innerText);
                 showNextButton(totalQ);
