@@ -1,6 +1,8 @@
 import logging
+import os
 import random
 import uuid
+from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from typing import Dict, List, Optional, Any
 
@@ -20,7 +22,6 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 
-# --- Models ---
 class Question(BaseModel):
     word: str
     translation: str
@@ -32,6 +33,7 @@ class SessionData(BaseModel):
     correct_count: int
     total_questions: int
     answers: List[Dict[str, Any]]
+    created_at: datetime  # Tracks when the session started
 
 
 class AnswerRecord(BaseModel):
@@ -44,17 +46,28 @@ class AnswerRecord(BaseModel):
 
 # --- Configuration ---
 class Settings:
+    """Centralized configuration for the application."""
+
     PROJECT_NAME: str = "wlingo"
     DEBUG: bool = False
+    LOG_DIR: str = "log"
     LOG_FILE: str = "wlingo.log"
     WORDS_FILE: str = "vocabulary/words.csv"
     TEST_SIZE: int = 15
     SESSION_COOKIE_NAME: str = "quiz_session_id"
+    SESSION_TIMEOUT_MINUTES: int = 120  # 2 hours
 
 
 settings = Settings()
 
 # --- Logging Setup ---
+# 1. Create log directory if it doesn't exist
+if not os.path.exists(settings.LOG_DIR):
+    os.makedirs(settings.LOG_DIR)
+
+# 2. Construct full log path
+log_path = os.path.join(settings.LOG_DIR, settings.LOG_FILE)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -62,7 +75,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-file_handler = RotatingFileHandler(settings.LOG_FILE, maxBytes=5_000_000, backupCount=3)
+# 3. Use the new path in the file handler
+file_handler = RotatingFileHandler(log_path, maxBytes=5_000_000, backupCount=3)
 file_handler.setFormatter(
     logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 )
@@ -132,6 +146,26 @@ def prepare_quiz_data(test_words: List[Dict[str, str]]) -> List[Question]:
     ]
 
 
+def get_active_session(session_id: str) -> Optional[SessionData]:
+    """Retrieves a session if it exists and hasn't expired."""
+    if not session_id or session_id not in sessions:
+        return None
+
+    session = sessions[session_id]
+
+    # Check timeout
+    if datetime.now() - session.created_at > timedelta(
+        minutes=settings.SESSION_TIMEOUT_MINUTES
+    ):
+        logger.info(
+            f"Session {session_id} expired (created at {session.created_at}). Deleting."
+        )
+        del sessions[session_id]
+        return None
+
+    return session
+
+
 # --- Dependencies ---
 def get_session_id(
     session_id: Optional[str] = Cookie(None, alias=settings.SESSION_COOKIE_NAME),
@@ -173,6 +207,7 @@ async def start_quiz_session(response: Response):
         correct_count=0,
         total_questions=len(prepared_questions),
         answers=[],
+        created_at=datetime.now(),  # Set creation time
     )
 
     logger.info(f"New session started: {new_id}")
@@ -194,9 +229,9 @@ async def start_quiz_session(response: Response):
 @app.get("/api/quiz/{index}")
 async def get_question_data(index: int, session_id: str = Depends(get_session_id)):
     """Returns JSON data for a specific question."""
-    session_data = sessions.get(session_id)
+    session_data = get_active_session(session_id)
     if not session_data:
-        return JSONResponse({"error": "Session invalid"}, status_code=401)
+        return JSONResponse({"error": "Session invalid or expired"}, status_code=401)
 
     if not (0 <= index < session_data.total_questions):
         return JSONResponse({"error": "Index out of bounds"}, status_code=404)
@@ -219,7 +254,7 @@ async def display_question_page(
     request: Request, index: int, session_id: str = Depends(get_session_id)
 ):
     """Serves the HTML shell for the quiz question."""
-    session_data = sessions.get(session_id)
+    session_data = get_active_session(session_id)
     if not session_data:
         return RedirectResponse(url="/", status_code=302)
     if index >= session_data.total_questions:
@@ -239,11 +274,13 @@ async def submit_answer(
     """
     Validates answer index, looks up string value, and records result.
     """
-    session_data = sessions.get(session_id)
+    session_data = get_active_session(session_id)
 
     # 1. Validate Session
     if not session_data or not (0 <= current_index < session_data.total_questions):
-        return JSONResponse({"error": "Invalid session or index"}, status_code=401)
+        return JSONResponse(
+            {"error": "Invalid session, expired, or index error"}, status_code=401
+        )
 
     # 2. Prevent Double Submission
     if current_index < len(session_data.answers):
@@ -283,9 +320,9 @@ async def submit_answer(
 @app.get("/api/result")
 async def get_result_data(session_id: str = Depends(get_session_id)):
     """Returns JSON stats for the completed quiz."""
-    session_data = sessions.get(session_id)
+    session_data = get_active_session(session_id)
     if not session_data:
-        return JSONResponse({"error": "Session invalid"}, status_code=401)
+        return JSONResponse({"error": "Session invalid or expired"}, status_code=401)
 
     total = session_data.total_questions
     score = round((session_data.correct_count / total) * 100) if total > 0 else 0

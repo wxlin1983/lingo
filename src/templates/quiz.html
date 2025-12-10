@@ -18,6 +18,7 @@
             border: 1px solid #ccc;
             cursor: pointer;
             font-size: 1.1em;
+            position: relative;
         }
 
         .option-btn:hover {
@@ -37,6 +38,19 @@
         .disabled {
             pointer-events: none;
             opacity: 0.7;
+        }
+
+        /* Hotkey Hint Styling */
+        .key-hint {
+            display: inline-block;
+            background-color: #fff;
+            border: 1px solid #999;
+            border-radius: 4px;
+            padding: 0 5px;
+            margin-right: 10px;
+            font-size: 0.8em;
+            color: #555;
+            font-weight: bold;
         }
 
         #loading {
@@ -65,118 +79,149 @@
             <div id="feedback-message" style="margin-top: 15px; font-weight: bold;"></div>
         </div>
 
-        <div style="margin-top: 20px;">
+        <div class="nav-area">
             <button id="next-btn" style="display:none;">Next Question >></button>
             <a href="/result" id="finish-btn" style="display:none;">See Results</a>
         </div>
+
+        <p style="text-align: center; color: #888; font-size: 0.9em; margin-top: 30px;">
+            <small>Tip: Use keys <strong>1-4</strong> to select, <strong>Enter</strong> for next.</small>
+        </p>
     </div>
 
     <script>
         $(document).ready(function () {
-            // Get the index passed from FastAPI
-            const currentIndex = {{ current_index }
-        };
+            const currentIndex = {{ current_index }};
+            let isAnswered = false; // Track state for Enter key logic
 
-        // --- 1. Load Question Data ---
-        function loadQuestion() {
-            $.get(`/api/quiz/${currentIndex}`)
-                .done(function (data) {
-                    // Update Text Elements
-                    $('#word-display').text(data.word);
-                    $('#current-q').text(data.current_index + 1);
-                    $('#total-q').text(data.total_questions);
+            // --- 1. Load Question Data ---
+            function loadQuestion() {
+                $.get(`/api/quiz/${currentIndex}`)
+                    .done(function (data) {
+                        $('#word-display').text(data.word);
+                        $('#current-q').text(data.current_index + 1);
+                        $('#total-q').text(data.total_questions);
 
-                    const $container = $('#options-container').empty();
+                        const $container = $('#options-container').empty();
 
-                    // Generate Buttons
-                    $.each(data.options, function (index, option) {
-                        const $btn = $('<button>')
-                            .addClass('option-btn')
-                            .text(option)
-                            .on('click', function () {
-                                submitAnswer(index, $(this));
-                            });
+                        // Generate Buttons
+                        $.each(data.options, function (index, option) {
+                            // Create button with Hotkey Hint (1, 2, 3, 4)
+                            const hotkey = index + 1;
+                            const $btn = $('<button>')
+                                .addClass('option-btn')
+                                .html(`<span class="key-hint">${hotkey}</span> ${option}`)
+                                .on('click', function () {
+                                    submitAnswer(index, $(this));
+                                });
 
-                        // Apply styles if already answered
+                            if (data.answer_record) {
+                                isAnswered = true;
+                                $btn.addClass('disabled');
+                                if (option === data.answer_record.correct_answer) $btn.addClass('correct');
+                                if (option === data.answer_record.user_answer && !data.answer_record.is_correct) $btn.addClass('incorrect');
+                            }
+
+                            $container.append($btn);
+                        });
+
                         if (data.answer_record) {
-                            $btn.addClass('disabled');
-                            if (option === data.answer_record.correct_answer) $btn.addClass('correct');
-                            if (option === data.answer_record.user_answer && !data.answer_record.is_correct) $btn.addClass('incorrect');
+                            showNextButton(data.total_questions);
                         }
-
-                        $container.append($btn);
+                    })
+                    .fail(function () {
+                        $('#word-display').text("Error loading question.");
+                        console.error("Load failed");
                     });
-
-                    // Show navigation if answered
-                    if (data.answer_record) {
-                        showNextButton(data.total_questions);
-                    }
-                })
-                .fail(function () {
-                    $('#word-display').text("Error loading question.");
-                    console.error("Load failed");
-                });
-        }
-
-        // --- 2. Submit Answer ---
-        function submitAnswer(selectedIndex, $clickedBtn) {
-            // Disable all buttons immediately
-            $('.option-btn').addClass('disabled');
-
-            // Send data using jQuery POST
-            // jQuery automatically formats this object for Form(...) in FastAPI
-            $.post('/submit_answer', {
-                selected_option_index: selectedIndex,
-                current_index: currentIndex
-            })
-                .done(function (result) {
-                    // Update Button Colors
-                    $('.option-btn').each(function () {
-                        const $btn = $(this);
-                        if ($btn.text() === result.correct_answer) {
-                            $btn.addClass('correct');
-                        }
-                        // Highlight clicked button if wrong
-                        if ($btn.is($clickedBtn) && !result.is_correct) {
-                            $btn.addClass('incorrect');
-                        }
-                    });
-
-                    // Update Feedback Text
-                    const $feedback = $('#feedback-message');
-                    if (result.is_correct) {
-                        $feedback.text("Correct!").css('color', '#155724');
-                    } else {
-                        $feedback.text(`Wrong! The answer is ${result.correct_answer}`).css('color', '#721c24');
-                    }
-
-                    // Show Navigation
-                    const totalQ = parseInt($('#total-q').text());
-                    showNextButton(totalQ);
-                })
-                .fail(function (xhr) {
-                    const errorMsg = xhr.responseJSON ? xhr.responseJSON.error : "Submission failed";
-                    alert("Error: " + errorMsg);
-                });
-        }
-
-        // --- 3. Helpers ---
-        function showNextButton(totalQuestions) {
-            const nextIndex = currentIndex + 1;
-            if (nextIndex < totalQuestions) {
-                $('#next-btn').css('display', 'inline-block');
-            } else {
-                $('#finish-btn').css('display', 'inline-block');
             }
-        }
 
-        // Bind Next Button Click
-        $('#next-btn').on('click', function () {
-            window.location.href = `/quiz/${currentIndex + 1}`;
-        });
+            // --- 2. Submit Answer ---
+            function submitAnswer(selectedIndex, $clickedBtn) {
+                // Disable UI immediately
+                $('.option-btn').addClass('disabled');
+                isAnswered = true;
 
-        // Initialize Page
-        loadQuestion();
+                $.post('/submit_answer', {
+                    selected_option_index: selectedIndex,
+                    current_index: currentIndex
+                })
+                    .done(function (result) {
+                        $('.option-btn').each(function () {
+                            const $btn = $(this);
+                            // We need to parse text carefully since we added HTML for key hints
+                            // Simple text check might fail, so checking against index logic is safer usually,
+                            // but here we check if the button text ends with the answer
+                            const btnText = $btn.text().replace(/^\d+\s/, ''); // Remove hotkey number for check logic if needed, or rely on server result matching logic
+
+                            // Visual feedback logic
+                            if ($btn.text().includes(result.correct_answer)) {
+                                $btn.addClass('correct');
+                            }
+                            if ($btn.is($clickedBtn) && !result.is_correct) {
+                                $btn.addClass('incorrect');
+                            }
+                        });
+
+                        const $feedback = $('#feedback-message');
+                        if (result.is_correct) {
+                            $feedback.text("Correct!").css('color', '#155724');
+                        } else {
+                            $feedback.text(`Wrong! The answer is ${result.correct_answer}`).css('color', '#721c24');
+                        }
+
+                        const totalQ = parseInt($('#total-q').text());
+                        showNextButton(totalQ);
+                    })
+                    .fail(function (xhr) {
+                        const errorMsg = xhr.responseJSON ? xhr.responseJSON.error : "Submission failed";
+                        alert("Error: " + errorMsg);
+                    });
+            }
+
+            // --- 3. Helpers ---
+            function showNextButton(totalQuestions) {
+                const nextIndex = currentIndex + 1;
+                if (nextIndex < totalQuestions) {
+                    $('#next-btn').css('display', 'inline-block');
+                } else {
+                    $('#finish-btn').css('display', 'inline-block');
+                }
+            }
+
+            function goToNext() {
+                window.location.href = `/quiz/${currentIndex + 1}`;
+            }
+
+            // --- 4. Keyboard Event Listener ---
+            $(document).on('keydown', function (e) {
+                const key = e.key;
+
+                // Handle Number Keys (1-4)
+                if (['1', '2', '3', '4'].includes(key) && !isAnswered) {
+                    const index = parseInt(key) - 1;
+                    const $buttons = $('.option-btn');
+                    if ($buttons.length > index) {
+                        // Trigger click on the specific button
+                        $buttons.eq(index).click();
+                    }
+                }
+
+                // Handle Enter Key
+                if (key === 'Enter' && isAnswered) {
+                    // Check which button is visible and click it (or navigate)
+                    if ($('#next-btn').is(':visible')) {
+                        goToNext();
+                    } else if ($('#finish-btn').is(':visible')) {
+                        window.location.href = $('#finish-btn').attr('href');
+                    }
+                }
+            });
+
+            // Bind Next Button Click
+            $('#next-btn').on('click', goToNext);
+
+            // Initialize Page
+            loadQuestion();
         });
     </script>
 </body>
