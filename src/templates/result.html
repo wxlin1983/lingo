@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quiz Results</title>
     <link rel="stylesheet" href="/static/style.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
 
 <body>
@@ -22,76 +23,72 @@
         <h2 class="review-heading">Answer Review:</h2>
 
         <div id="review-container">
-            <p class="loading-text">Loading results...</p>
+            <p class="loading-text" style="text-align: center; color: #666;">Loading results...</p>
         </div>
 
         <div class="action-area">
-            <button onclick="startNewQuiz()" class="start-new-quiz-btn">
+            <button id="start-new-quiz-btn" class="start-new-quiz-btn">
                 Start New Quiz 🔄
             </button>
         </div>
     </div>
 
     <script>
-        async function loadResults() {
-            try {
-                const response = await fetch('/api/result');
+        $(document).ready(function () {
 
-                if (response.status === 401) {
-                    window.location.href = "/";
-                    return;
-                }
+            $.get('/api/result')
+                .done(function (data) {
+                    $('#correct-count').text(data.correct_count);
+                    $('#total-questions').text(data.total_questions);
+                    $('#score-percentage').text(data.score_percentage);
 
-                if (!response.ok) throw new Error("Failed to load results");
+                    const $container = $('#review-container').empty();
 
-                const data = await response.json();
+                    $.each(data.answers, function (index, answer) {
+                        let userAnswerHtml = '';
 
-                document.getElementById('correct-count').innerText = data.correct_count;
-                document.getElementById('total-questions').innerText = data.total_questions;
-                document.getElementById('score-percentage').innerText = data.score_percentage;
+                        if (answer.is_correct) {
+                            userAnswerHtml = `<span class="review-correct">${answer.user_answer} (Correct) 🟢</span>`;
+                        } else {
+                            userAnswerHtml = `<span class="review-incorrect">${answer.user_answer} (Incorrect) 🔴</span>`;
+                        }
 
-                const container = document.getElementById('review-container');
-                container.innerHTML = '';
+                        const itemHtml = `
+                            <div class="review-item">
+                                <h3>${index + 1}. Word: <strong>${answer.word}</strong></h3>
+                                <p><strong class="label">Correct Translation:</strong> <span class="review-correct">${answer.correct_answer}</span></p>
+                                <p><strong class="label">Your Answer:</strong> ${userAnswerHtml}</p>
+                            </div>
+                        `;
 
-                data.answers.forEach((answer, index) => {
-                    const itemDiv = document.createElement('div');
-                    itemDiv.className = 'review-item';
-
-                    let userAnswerHtml = answer.is_correct
-                        ? `<span class="review-correct">${answer.user_answer} (Correct) 🟢</span>`
-                        : `<span class="review-incorrect">${answer.user_answer} (Incorrect) 🔴</span>`;
-
-                    itemDiv.innerHTML = `
-                        <h3>${index + 1}. Word: <strong>${answer.word}</strong></h3>
-                        <p><strong class="label">Correct Translation:</strong> <span class="review-correct">${answer.correct_answer}</span></p>
-                        <p><strong class="label">Your Answer:</strong> ${userAnswerHtml}</p>
-                    `;
-
-                    container.appendChild(itemDiv);
+                        $container.append(itemHtml);
+                    });
+                })
+                .fail(function (xhr) {
+                    if (xhr.status === 401) {
+                        window.location.href = "/";
+                    } else {
+                        $('#review-container').html('<p style="color:red; text-align:center;">Error loading results.</p>');
+                        console.error("Error loading results:", xhr);
+                    }
                 });
 
-            } catch (error) {
-                console.error(error);
-                document.getElementById('review-container').innerText = "Error loading results.";
-            }
-        }
+            $('#start-new-quiz-btn').on('click', function () {
+                const $btn = $(this);
 
-        async function startNewQuiz() {
-            try {
-                const btn = document.querySelector('.start-new-quiz-btn');
-                btn.innerText = "Resetting...";
-                btn.disabled = true;
+                $btn.text("Resetting...").prop('disabled', true);
 
-                await fetch('/api/reset', { method: 'POST' });
-
-                window.location.href = "/";
-            } catch (error) {
-                console.error("Failed to reset quiz:", error);
-                alert("Could not start new quiz. Please try again.");
-            }
-        }
-
-        loadResults();
+                $.post('/api/reset')
+                    .done(function () {
+                        window.location.href = "/";
+                    })
+                    .fail(function (xhr) {
+                        console.error("Failed to reset quiz:", xhr);
+                        alert("Could not start new quiz. Please try again.");
+                        $btn.text("Start New Quiz 🔄").prop('disabled', false);
+                    });
+            });
+        });
     </script>
 </body>
 
