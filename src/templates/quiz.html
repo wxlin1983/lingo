@@ -21,6 +21,7 @@
 
         <div id="quiz-content">
             <h2 id="word-display">Loading...</h2>
+            <button id="speak-btn">🔊 Listen</button>
 
             <div id="options-container">
             </div>
@@ -34,7 +35,8 @@
         </div>
 
         <p class="tip">
-            <small>Tip: Use keys <strong>1-4</strong> to select, <strong>Enter</strong> for next.</small>
+            <small>Tip: Use keys <strong>1-4</strong> to select, <strong>Enter</strong> for next, <strong>S</strong> to
+                speak.</small>
         </p>
     </div>
 
@@ -42,16 +44,28 @@
         $(document).ready(function () {
             const currentIndex = {{ current_index }};
             let isAnswered = false;
+            let currentWordText = ""; // Store the word for audio
+
+            // --- Voice Function ---
+            function speakWord() {
+                if ('speechSynthesis' in window && currentWordText) {
+                    window.speechSynthesis.cancel(); // Stop previous audio
+                    const utterance = new SpeechSynthesisUtterance(currentWordText);
+                    utterance.rate = 0.9;
+                    window.speechSynthesis.speak(utterance);
+                }
+            }
 
             function loadQuestion() {
                 $.get(`/api/quiz/${currentIndex}`)
                     .done(function (data) {
                         $('#word-display').text(data.word);
+                        currentWordText = data.word; // Update current word
+
                         $('#current-q').text(data.current_index + 1);
                         $('#total-q').text(data.total_questions);
 
                         const $container = $('#options-container').empty();
-
 
                         $.each(data.options, function (index, option) {
 
@@ -137,28 +151,33 @@
                 window.location.href = `/quiz/${currentIndex + 1}`;
             }
 
+            // --- Event Listeners ---
+
+            $('#speak-btn').on('click', function () {
+                speakWord();
+            });
 
             $(document).on('keydown', function (e) {
                 const key = e.key;
-
 
                 if (['1', '2', '3', '4'].includes(key) && !isAnswered) {
                     const index = parseInt(key) - 1;
                     const $buttons = $('.option-btn');
                     if ($buttons.length > index) {
-
                         $buttons.eq(index).click();
                     }
                 }
 
-
                 if (key === 'Enter' && isAnswered) {
-
                     if ($('#next-btn').is(':visible')) {
                         goToNext();
                     } else if ($('#finish-btn').is(':visible')) {
                         window.location.href = $('#finish-btn').attr('href');
                     }
+                }
+
+                if (key.toLowerCase() === 's') {
+                    speakWord();
                 }
             });
 
