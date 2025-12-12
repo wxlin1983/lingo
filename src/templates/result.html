@@ -46,12 +46,10 @@
 
                 const data = await response.json();
 
-                // Update Stats
                 document.getElementById('correct-count').innerText = data.correct_count;
                 document.getElementById('total-questions').innerText = data.total_questions;
                 document.getElementById('score-percentage').innerText = data.score_percentage;
 
-                // Build Review List
                 const container = document.getElementById('review-container');
                 container.innerHTML = '';
 
@@ -78,17 +76,14 @@
             }
         }
 
-        // NEW: Function to reset session and go home
         async function startNewQuiz() {
             try {
                 const btn = document.querySelector('.start-new-quiz-btn');
                 btn.innerText = "Resetting...";
                 btn.disabled = true;
 
-                // Call the reset endpoint
                 await fetch('/api/reset', { method: 'POST' });
 
-                // Redirect to homepage (which will now generate a fresh quiz)
                 window.location.href = "/";
             } catch (error) {
                 console.error("Failed to reset quiz:", error);

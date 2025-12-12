@@ -41,9 +41,8 @@
     <script>
         $(document).ready(function () {
             const currentIndex = {{ current_index }};
-            let isAnswered = false; // Track state for Enter key logic
+            let isAnswered = false;
 
-            // --- 1. Load Question Data ---
             function loadQuestion() {
                 $.get(`/api/quiz/${currentIndex}`)
                     .done(function (data) {
@@ -53,9 +52,9 @@
 
                         const $container = $('#options-container').empty();
 
-                        // Generate Buttons
+
                         $.each(data.options, function (index, option) {
-                            // Create button with Hotkey Hint (1, 2, 3, 4)
+
                             const hotkey = index + 1;
                             const $btn = $('<button>')
                                 .addClass('option-btn')
@@ -84,9 +83,9 @@
                     });
             }
 
-            // --- 2. Submit Answer ---
+
             function submitAnswer(selectedIndex, $clickedBtn) {
-                // Disable UI immediately
+
                 $('.option-btn').addClass('disabled');
                 isAnswered = true;
 
@@ -97,12 +96,9 @@
                     .done(function (result) {
                         $('.option-btn').each(function () {
                             const $btn = $(this);
-                            // We need to parse text carefully since we added HTML for key hints
-                            // Simple text check might fail, so checking against index logic is safer usually,
-                            // but here we check if the button text ends with the answer
-                            const btnText = $btn.text().replace(/^\d+\s/, ''); // Remove hotkey number for check logic if needed, or rely on server result matching logic
 
-                            // Visual feedback logic
+                            const btnText = $btn.text().replace(/^\d+\s/, '');
+
                             if ($btn.text().includes(result.correct_answer)) {
                                 $btn.addClass('correct');
                             }
@@ -127,7 +123,7 @@
                     });
             }
 
-            // --- 3. Helpers ---
+
             function showNextButton(totalQuestions) {
                 const nextIndex = currentIndex + 1;
                 if (nextIndex < totalQuestions) {
@@ -141,23 +137,23 @@
                 window.location.href = `/quiz/${currentIndex + 1}`;
             }
 
-            // --- 4. Keyboard Event Listener ---
+
             $(document).on('keydown', function (e) {
                 const key = e.key;
 
-                // Handle Number Keys (1-4)
+
                 if (['1', '2', '3', '4'].includes(key) && !isAnswered) {
                     const index = parseInt(key) - 1;
                     const $buttons = $('.option-btn');
                     if ($buttons.length > index) {
-                        // Trigger click on the specific button
+
                         $buttons.eq(index).click();
                     }
                 }
 
-                // Handle Enter Key
+
                 if (key === 'Enter' && isAnswered) {
-                    // Check which button is visible and click it (or navigate)
+
                     if ($('#next-btn').is(':visible')) {
                         goToNext();
                     } else if ($('#finish-btn').is(':visible')) {
@@ -166,10 +162,10 @@
                 }
             });
 
-            // Bind Next Button Click
+
             $('#next-btn').on('click', goToNext);
 
-            // Initialize Page
+
             loadQuestion();
         });
     </script>

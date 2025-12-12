@@ -7,38 +7,19 @@
     <title>Welcome to wlingo</title>
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <style>
-        .topic-select {
-            padding: 10px;
-            font-size: 1.1em;
-            border-radius: 8px;
-            border: 2px solid #ddd;
-            margin-bottom: 20px;
-            width: 80%;
-            max-width: 300px;
-            background-color: white;
-        }
-
-        /* 加載中的狀態樣式 */
-        .loading-text {
-            color: #888;
-            font-size: 0.9em;
-            font-style: italic;
-        }
-    </style>
-</head>
+    </head>
 
 <body>
-    <div class="container" style="text-align: center; padding-top: 50px;">
-        <h1 style="color: #58cc02; font-size: 3em; margin-bottom: 10px;">wlingo</h1>
-        <p style="color: #777; font-size: 1.2em; margin-bottom: 30px;">
+    <div class="container start-container">
+        <h1 class="start-h1">wlingo</h1>
+        <p class="start-p">
             Choose a topic and start learning!
         </p>
 
         <form action="/start" method="POST" id="start-form">
 
-            <div style="margin-bottom: 20px;">
-                <label for="topic" style="display:block; margin-bottom: 8px; font-weight:bold; color:#555;">
+            <div class="start-div">
+                <label for="topic" class="start-label">
                     Select Vocabulary Set:
                 </label>
 
@@ -46,11 +27,10 @@
                     <option value="" disabled selected>Loading topics...</option>
                 </select>
 
-                <div id="error-message" style="color: red; display: none;"></div>
+                <div id="error-message" class="start-error"></div>
             </div>
 
-            <button type="submit" id="start-btn" class="start-new-quiz-btn"
-                style="font-size: 1.5em; padding: 15px 50px;" disabled>
+            <button type="submit" id="start-btn" class="start-new-quiz-btn start-btn-lg" disabled>
                 Start Quiz ▶️
             </button>
         </form>
@@ -58,11 +38,10 @@
 
     <script>
         $(document).ready(function () {
-            // 1. 頁面載入後，發送 AJAX 請求獲取題庫列表
             $.get('/api/topics')
                 .done(function (topics) {
                     const $select = $('#topic');
-                    $select.empty(); // 清空 "Loading..." 選項
+                    $select.empty();
 
                     if (topics.length === 0) {
                         $select.append('<option disabled>No topics found</option>');
@@ -70,7 +49,6 @@
                         return;
                     }
 
-                    // 2. 動態生成 <option> 標籤
                     $.each(topics, function (index, topic) {
                         const optionText = `${topic.name} (${topic.count} words)`;
                         $select.append(
@@ -81,7 +59,6 @@
                         );
                     });
 
-                    // 3. 啟用選單和按鈕
                     $select.prop('disabled', false);
                     $('#start-btn').prop('disabled', false);
                 })
