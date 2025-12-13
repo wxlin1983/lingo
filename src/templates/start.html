@@ -38,33 +38,44 @@
 
     <script>
         $(document).ready(function () {
+            const $select = $('#topic');
+            const $startButton = $('#start-btn');
+            const $errorMessage = $('#error-message');
+
+            // Clear loading text
+            $select.empty();
+
+            // Add Arithmetic option first
+            $select.append(
+                $('<option>', {
+                    value: '__arithmetic__',
+                    text: 'Arithmetic Quiz (for kids)'
+                })
+            );
+
             $.get('/api/topics')
                 .done(function (topics) {
-                    const $select = $('#topic');
-                    $select.empty();
-
-                    if (topics.length === 0) {
-                        $select.append('<option disabled>No topics found</option>');
-                        $('#error-message').text('No vocabulary files found on server.').show();
-                        return;
+                    if (topics.length > 0) {
+                        $.each(topics, function (index, topic) {
+                            const optionText = `${topic.name} (${topic.count} words)`;
+                            $select.append(
+                                $('<option>', {
+                                    value: topic.id,
+                                    text: optionText
+                                })
+                            );
+                        });
+                    } else {
+                        $errorMessage.text('No vocabulary files found.').show();
                     }
-
-                    $.each(topics, function (index, topic) {
-                        const optionText = `${topic.name} (${topic.count} words)`;
-                        $select.append(
-                            $('<option>', {
-                                value: topic.id,
-                                text: optionText
-                            })
-                        );
-                    });
-
-                    $select.prop('disabled', false);
-                    $('#start-btn').prop('disabled', false);
                 })
                 .fail(function () {
-                    $('#topic').empty().append('<option disabled>Error loading topics</option>');
-                    $('#error-message').text('Failed to connect to server.').show();
+                    $errorMessage.text('Failed to connect to server to load vocabulary.').show();
+                })
+                .always(function() {
+                    // Enable the form elements regardless of API call success
+                    $select.prop('disabled', false);
+                    $startButton.prop('disabled', false);
                 });
         });
     </script>

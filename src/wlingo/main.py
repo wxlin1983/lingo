@@ -95,15 +95,21 @@ async def home(request: Request):
 async def start_quiz_session(
     response: Response,
     topic: str = Form(...),
-    mode: str = Form("standard"),
 ):
-    # Validate topic exists
-    if not vocab_manager.get_words(topic):
-        topics = vocab_manager.get_topics()
-        topic = topics[0]["id"] if topics else "default_dummy"
+    mode = "standard"
+    if topic == "__arithmetic__":
+        mode = "arithmetic"
+        topic = "Arithmetic"
 
-    # --- Use Factory to generate questions ---
-    generator = QuizFactory.create(mode, vocab_manager)
+    if mode == "standard":
+        # Validate topic exists
+        if not vocab_manager.get_words(topic):
+            topics = vocab_manager.get_topics()
+            topic = topics[0]["id"] if topics else "default_dummy"
+        generator = QuizFactory.create(mode, vocab_manager)
+    else:  # mode is arithmetic
+        generator = QuizFactory.create(mode)
+
     prepared_questions = generator.generate(topic, settings.TEST_SIZE)
 
     new_id = str(uuid.uuid4())
