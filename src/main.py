@@ -3,6 +3,7 @@ import os
 import random
 import uuid
 import glob
+from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from typing import Dict, List, Optional, Any
@@ -23,6 +24,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 
+# --- Models ---
 class Question(BaseModel):
     word: str
     translation: str
@@ -35,7 +37,8 @@ class SessionData(BaseModel):
     total_questions: int
     answers: List[Dict[str, Any]]
     created_at: datetime
-    topic: str  # Selected vocabulary set
+    topic: str
+    mode: str = "standard"  # New: Track quiz mode (standard, review, etc.)
 
 
 class AnswerRecord(BaseModel):
@@ -80,94 +83,129 @@ app = FastAPI(title=settings.PROJECT_NAME, debug=settings.DEBUG)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# --- Storage ---
-# Key: filename (e.g., 'german_basic'), Value: word list
-ALL_VOCAB_SETS: Dict[str, List[Dict[str, str]]] = {}
 sessions: Dict[str, SessionData] = {}
 
-# --- Core Logic ---
+
+# --- Service Layer: Vocabulary Management ---
+class VocabularyManager:
+    """Manages loading and accessing vocabulary sets."""
+
+    def __init__(self, directory: str):
+        self.directory = directory
+        self.vocab_sets: Dict[str, List[Dict[str, str]]] = {}
+        self.load_all()
+
+    def load_all(self):
+        self.vocab_sets = {}
+        if not os.path.exists(self.directory):
+            os.makedirs(self.directory)
+            logger.warning(f"Created directory {self.directory}. Please add CSV files.")
+            return
+
+        csv_files = glob.glob(os.path.join(self.directory, "*.csv"))
+        for file_path in csv_files:
+            try:
+                file_name = os.path.splitext(os.path.basename(file_path))[0]
+                df = pd.read_csv(file_path, encoding="utf-8")
+                if "word" in df.columns and "translation" in df.columns:
+                    self.vocab_sets[file_name] = df.to_dict("records")
+                    logger.info(f"Loaded {len(df)} words from {file_name}")
+                else:
+                    logger.error(f"Skipping {file_name}: Missing columns.")
+            except Exception as e:
+                logger.error(f"Failed to load {file_path}: {e}")
+
+        if not self.vocab_sets:
+            logger.warning("No CSV files found. Loading dummy data.")
+            self.vocab_sets["default_dummy"] = [
+                {"word": "Hund", "translation": "dog"},
+                {"word": "Katze", "translation": "cat"},
+                {"word": "Baum", "translation": "tree"},
+                {"word": "Haus", "translation": "house"},
+                {"word": "Wasser", "translation": "water"},
+            ]
+
+    def get_words(self, topic: str) -> List[Dict[str, str]]:
+        return self.vocab_sets.get(topic, [])
+
+    def get_topics(self) -> List[Dict[str, Any]]:
+        topics = []
+        for key, words in self.vocab_sets.items():
+            display_name = key.replace("_", " ").title()
+            topics.append({"id": key, "name": display_name, "count": len(words)})
+        topics.sort(key=lambda x: x["name"])
+        return topics
 
 
-def load_all_vocabularies():
-    """Load all .csv files from the vocabulary directory."""
-    global ALL_VOCAB_SETS
-    ALL_VOCAB_SETS = {}
+vocab_manager = VocabularyManager(settings.VOCAB_DIR)
 
-    # Ensure directory exists
-    if not os.path.exists(settings.VOCAB_DIR):
-        os.makedirs(settings.VOCAB_DIR)
-        logger.warning(f"Created directory {settings.VOCAB_DIR}. Please add CSV files.")
-        return
 
-    # Find all CSV files
-    csv_files = glob.glob(os.path.join(settings.VOCAB_DIR, "*.csv"))
+# --- Strategy Pattern: Quiz Generators ---
+class QuizGenerator(ABC):
+    """Abstract Base Class for different quiz generation strategies."""
 
-    for file_path in csv_files:
-        try:
-            # Use filename as ID
-            file_name = os.path.splitext(os.path.basename(file_path))[0]
-            df = pd.read_csv(file_path, encoding="utf-8")
+    @abstractmethod
+    def generate(self, topic: str, count: int) -> List[Question]:
+        pass
 
-            # Validate columns
-            if "word" in df.columns and "translation" in df.columns:
-                ALL_VOCAB_SETS[file_name] = df.to_dict("records")
-                logger.info(f"Loaded {len(df)} words from {file_name}")
-            else:
-                logger.error(
-                    f"Skipping {file_name}: Missing 'word' or 'translation' columns."
-                )
+    def _generate_options(
+        self, correct_translation: str, all_words: List[Dict[str, str]]
+    ) -> List[str]:
+        """Helper to generate random distractors."""
+        all_translations = {w["translation"] for w in all_words}
+        all_translations.discard(correct_translation)
 
-        except Exception as e:
-            logger.error(f"Failed to load {file_path}: {e}")
+        num_options = 3
+        if len(all_translations) < num_options:
+            incorrect = list(all_translations)
+            while len(incorrect) < num_options:
+                incorrect.append(f"Option {len(incorrect)+1}")
+        else:
+            incorrect = random.sample(list(all_translations), num_options)
 
-    # Fallback to dummy data if no files found
-    if not ALL_VOCAB_SETS:
-        logger.warning("No valid CSV files found. Loading dummy data.")
-        ALL_VOCAB_SETS["default_dummy"] = [
-            {"word": "Hund", "translation": "dog"},
-            {"word": "Katze", "translation": "cat"},
-            {"word": "Baum", "translation": "tree"},
+        options = [correct_translation] + incorrect
+        random.shuffle(options)
+        return options
+
+
+class RandomQuizGenerator(QuizGenerator):
+    """Standard mode: Randomly selects N words from the topic."""
+
+    def generate(self, topic: str, count: int) -> List[Question]:
+        word_list = vocab_manager.get_words(topic)
+        if not word_list:
+            return []
+
+        selected_words = random.sample(word_list, min(count, len(word_list)))
+
+        return [
+            Question(
+                word=item["word"],
+                translation=item["translation"],
+                options=self._generate_options(item["translation"], word_list),
+            )
+            for item in selected_words
         ]
 
 
-def get_test_words(topic: str) -> List[Dict[str, str]]:
-    """Select random words based on topic."""
-    word_list = ALL_VOCAB_SETS.get(topic, [])
-    if not word_list:
-        return []
-    return random.sample(word_list, min(settings.TEST_SIZE, len(word_list)))
+class QuizFactory:
+    """Factory to select the appropriate generator."""
+
+    @staticmethod
+    def create(mode: str) -> QuizGenerator:
+        # In the future, you can add "review", "hard", "ai_generated" modes here
+        if mode == "standard":
+            return RandomQuizGenerator()
+        else:
+            # Fallback
+            return RandomQuizGenerator()
 
 
-def generate_options(correct_translation: str, topic: str) -> List[str]:
-    """Generate options from the specific topic."""
-    word_list = ALL_VOCAB_SETS.get(topic, [])
-    all_translations = {w["translation"] for w in word_list}
-    all_translations.discard(correct_translation)
-
-    num_options_to_generate = 3
-    if len(all_translations) < num_options_to_generate:
-        incorrect_options = list(all_translations)
-        while len(incorrect_options) < num_options_to_generate:
-            incorrect_options.append(f"Option {len(incorrect_options)+1}")
-    else:
-        incorrect_options = random.sample(
-            list(all_translations), num_options_to_generate
-        )
-
-    options = [correct_translation] + incorrect_options
-    random.shuffle(options)
-    return options
-
-
-def prepare_quiz_data(test_words: List[Dict[str, str]], topic: str) -> List[Question]:
-    return [
-        Question(
-            word=item["word"],
-            translation=item["translation"],
-            options=generate_options(item["translation"], topic),
-        )
-        for item in test_words
-    ]
+# --- Dependencies ---
+def get_session_id(
+    session_id: Optional[str] = Cookie(None, alias=settings.SESSION_COOKIE_NAME)
+) -> Optional[str]:
+    return session_id
 
 
 def get_active_session(session_id: str) -> Optional[SessionData]:
@@ -182,72 +220,54 @@ def get_active_session(session_id: str) -> Optional[SessionData]:
     return session
 
 
-def get_session_id(
-    session_id: Optional[str] = Cookie(None, alias=settings.SESSION_COOKIE_NAME)
-) -> Optional[str]:
-    return session_id
-
-
 # --- Lifecycle ---
 @app.on_event("startup")
 async def startup_event():
-    load_all_vocabularies()
+    # Reloads vocab on startup (manager handles logic)
+    vocab_manager.load_all()
 
 
 # --- Routes ---
 
 
-# API: Return vocabulary topics
 @app.get("/api/topics")
 async def get_topics():
-    """Returns a list of available vocabulary sets."""
-    topics = []
-    if not ALL_VOCAB_SETS:
-        # Return default if empty
-        return [{"id": "default_dummy", "name": "Default Demo Set", "count": 5}]
-
-    for key in ALL_VOCAB_SETS.keys():
-        display_name = key.replace("_", " ").title()
-        topics.append(
-            {"id": key, "name": display_name, "count": len(ALL_VOCAB_SETS[key])}
-        )
-
-    # Sort by name
-    topics.sort(key=lambda x: x["name"])
-    return topics
+    return vocab_manager.get_topics()
 
 
-# Serve start page
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    """Serves the welcome page skeleton."""
     return templates.TemplateResponse("start.html", {"request": request})
 
 
-# Create session with selected topic
 @app.post("/start", response_class=RedirectResponse)
 async def start_quiz_session(
-    response: Response, topic: str = Form(...)  # Topic from form
+    response: Response,
+    topic: str = Form(...),
+    mode: str = Form("standard"),  # Allow mode selection in future
 ):
-    # Validate topic
-    if topic not in ALL_VOCAB_SETS:
-        # Default to first if invalid
-        topic = list(ALL_VOCAB_SETS.keys())[0] if ALL_VOCAB_SETS else "default_dummy"
+    # Validate topic exists
+    if not vocab_manager.get_words(topic):
+        # Fallback to first available
+        topics = vocab_manager.get_topics()
+        topic = topics[0]["id"] if topics else "default_dummy"
+
+    # --- Use Factory to generate questions ---
+    generator = QuizFactory.create(mode)
+    prepared_questions = generator.generate(topic, settings.TEST_SIZE)
 
     new_id = str(uuid.uuid4())
-    test_words = get_test_words(topic)
-    prepared_questions = prepare_quiz_data(test_words, topic)
-
     sessions[new_id] = SessionData(
         prepared_questions=prepared_questions,
         correct_count=0,
         total_questions=len(prepared_questions),
         answers=[],
         created_at=datetime.now(),
-        topic=topic,  # Record selected topic
+        topic=topic,
+        mode=mode,
     )
 
-    logger.info(f"New session started: {new_id} [Topic: {topic}]")
+    logger.info(f"New session: {new_id} [Topic: {topic}, Mode: {mode}]")
 
     redirect = RedirectResponse(url="/quiz/0", status_code=302)
     redirect.set_cookie(
