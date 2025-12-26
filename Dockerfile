@@ -20,4 +20,4 @@ EXPOSE 8000
 
 ENV PYTHONPATH=src
 # Command to run the application using Uvicorn
-CMD ["uvicorn", "wlingo.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["uvicorn", "wlingo.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
