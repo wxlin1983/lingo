@@ -4,7 +4,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
-from typing import Dict, Optional
+from typing import Optional
 
 import uvicorn
 from fastapi import (
@@ -20,34 +20,28 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .config import settings
-from .database import init_db
-from .log_handler import SQLiteHandler
 from .models import AnswerRecord, SessionData
 from .quiz import QuizFactory
+from .redis_session import redis_client
 from .vocabulary import VocabularyManager
 
 # --- Logging Setup ---
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-if settings.LOG_TO_DB:
-    logger.addHandler(SQLiteHandler())
-else:
-    if not os.path.exists(settings.LOG_DIR):
-        os.makedirs(settings.LOG_DIR)
-    log_path = os.path.join(settings.LOG_DIR, settings.LOG_FILE)
-    file_handler = RotatingFileHandler(log_path, maxBytes=5_000_000, backupCount=3)
-    file_handler.setFormatter(
-        logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    )
-    logger.addHandler(file_handler)
+if not os.path.exists(settings.LOG_DIR):
+    os.makedirs(settings.LOG_DIR)
+log_path = os.path.join(settings.LOG_DIR, settings.LOG_FILE)
+file_handler = RotatingFileHandler(log_path, maxBytes=5_000_000, backupCount=3)
+file_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+)
+logger.addHandler(file_handler)
 
 
 # --- Lifecycle ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if settings.LOG_TO_DB:
-        init_db()
     vocab_manager.load_all()
     yield
 
@@ -61,25 +55,32 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-sessions: Dict[str, SessionData] = {}
 vocab_manager = VocabularyManager(f"{settings.VOCAB_DIR}")
 
 
 # --- Dependencies ---
 def get_session_id(
-    session_id: Optional[str] = Cookie(None, alias=settings.SESSION_COOKIE_NAME)
+    session_id: Optional[str] = Cookie(None, alias=settings.SESSION_COOKIE_NAME),
 ) -> Optional[str]:
     return session_id
 
 
-def get_active_session(session_id: str) -> Optional[SessionData]:
-    if not session_id or session_id not in sessions:
+def get_active_session(
+    session_id: str = Depends(get_session_id),
+) -> Optional[SessionData]:
+    if not session_id:
         return None
-    session = sessions[session_id]
+
+    session_data = redis_client.get(session_id)
+    if not session_data:
+        return None
+
+    session = SessionData.parse_raw(session_data)
+
     if datetime.now() - session.created_at > timedelta(
         minutes=settings.SESSION_TIMEOUT_MINUTES
     ):
-        del sessions[session_id]
+        redis_client.delete(session_id)
         return None
     return session
 
@@ -96,8 +97,7 @@ async def home(request: Request):
 
 
 @app.post("/start", response_class=RedirectResponse)
-async def start_quiz_session(
-    response: Response,
+def start_quiz_session(
     topic: str = Form(...),
 ):
     mode = "standard"
@@ -117,7 +117,7 @@ async def start_quiz_session(
     prepared_questions = generator.generate(topic, settings.TEST_SIZE)
 
     new_id = str(uuid.uuid4())
-    sessions[new_id] = SessionData(
+    session_data = SessionData(
         prepared_questions=prepared_questions,
         correct_count=0,
         total_questions=len(prepared_questions),
@@ -125,6 +125,12 @@ async def start_quiz_session(
         created_at=datetime.now(),
         topic=topic,
         mode=mode,
+    )
+
+    redis_client.set(
+        new_id,
+        session_data.model_dump_json(),
+        ex=timedelta(minutes=settings.SESSION_TIMEOUT_MINUTES),
     )
 
     logger.info(f"New session: {new_id} [Topic: {topic}, Mode: {mode}]")
@@ -140,8 +146,9 @@ async def start_quiz_session(
 
 
 @app.get("/api/quiz/{index}")
-async def get_question_data(index: int, session_id: str = Depends(get_session_id)):
-    session_data = get_active_session(session_id)
+def get_question_data(
+    index: int, session_data: SessionData = Depends(get_active_session)
+):
     if not session_data:
         return JSONResponse({"error": "Session invalid"}, status_code=401)
     if not (0 <= index < session_data.total_questions):
@@ -160,10 +167,11 @@ async def get_question_data(index: int, session_id: str = Depends(get_session_id
 
 
 @app.get("/quiz/{index}", response_class=HTMLResponse)
-async def display_question_page(
-    request: Request, index: int, session_id: str = Depends(get_session_id)
+def display_question_page(
+    request: Request,
+    index: int,
+    session_data: SessionData = Depends(get_active_session),
 ):
-    session_data = get_active_session(session_id)
     if not session_data:
         return RedirectResponse(url="/", status_code=302)
     if index >= session_data.total_questions:
@@ -180,12 +188,12 @@ async def display_question_page(
 
 
 @app.post("/submit_answer", response_model=AnswerRecord)
-async def submit_answer(
+def submit_answer(
     selected_option_index: int = Form(...),
     current_index: int = Form(...),
     session_id: str = Depends(get_session_id),
+    session_data: SessionData = Depends(get_active_session),
 ):
-    session_data = get_active_session(session_id)
     if not session_data or not (0 <= current_index < session_data.total_questions):
         return JSONResponse({"error": "Invalid session"}, status_code=401)
     if current_index < len(session_data.answers):
@@ -209,12 +217,16 @@ async def submit_answer(
         attempted=True,
     )
     session_data.answers.append(record)
+    redis_client.set(
+        session_id,
+        session_data.model_dump_json(),
+        ex=timedelta(minutes=settings.SESSION_TIMEOUT_MINUTES),
+    )
     return record
 
 
 @app.get("/api/result")
-async def get_result_data(session_id: str = Depends(get_session_id)):
-    session_data = get_active_session(session_id)
+def get_result_data(session_data: SessionData = Depends(get_active_session)):
     if not session_data:
         return JSONResponse({"error": "Session invalid"}, status_code=401)
 
@@ -234,9 +246,12 @@ async def result_page(request: Request):
 
 
 @app.post("/api/reset")
-async def reset_session(response: Response, session_id: str = Depends(get_session_id)):
-    if session_id in sessions:
-        del sessions[session_id]
+def reset_session(
+    response: Response,
+    session_id: str = Depends(get_session_id),
+):
+    if session_id:
+        redis_client.delete(session_id)
     response.delete_cookie(settings.SESSION_COOKIE_NAME)
     return {"status": "success"}
 

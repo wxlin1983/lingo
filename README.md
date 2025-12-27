@@ -46,6 +46,24 @@ pip install -r requirements.txt
 
 ### 2. Running the Application
 
+#### With Docker Compose (Recommended)
+
+The easiest way to get the application and its Redis dependency running is with Docker Compose.
+
+1.  **Build and Run the Services:**
+
+    Make sure you have Docker and Docker Compose installed, then run the following command from the project root:
+
+    ```bash
+    docker-compose up --build
+    ```
+
+    This will build the Docker image for the web app, pull the Redis image, and start both services. The `-d` flag can be added to run in detached mode.
+
+2.  **Stopping the Services:**
+
+    To stop the services, press `Ctrl+C` in the terminal where `docker-compose` is running, or run `docker-compose down` if you are in detached mode.
+
 #### Without Docker
 
 To run the app directly, you'll need to set the `PYTHONPATH` to include the `src` directory.

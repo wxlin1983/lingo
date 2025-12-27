@@ -46,6 +46,8 @@ pycodestyle==2.14.0
     # via flake8
 pydantic==2.12.5
     # via fastapi
+redis==5.0.7
+    # via wlingo (pyproject.toml)
 pydantic-core==2.41.5
     # via pydantic
 pyflakes==3.4.0

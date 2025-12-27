@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Dict, List, Any
 
@@ -15,7 +17,7 @@ class SessionData(BaseModel):
     prepared_questions: List[Question]
     correct_count: int
     total_questions: int
-    answers: List[Dict[str, Any]]
+    answers: List["AnswerRecord"]
     created_at: datetime
     topic: str
     mode: str = "standard"
