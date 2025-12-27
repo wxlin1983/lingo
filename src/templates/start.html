@@ -5,9 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Welcome to wlingo</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="{{ request.scope.get('root_path', '') }}/static/style.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    </head>
+    <script>
+        const ROOT_PATH = "{{ request.scope.get('root_path', '') }}";
+    </script>
+</head>
 
 <body>
     <div class="container start-container">
@@ -16,7 +19,7 @@
             Choose a topic and start learning!
         </p>
 
-        <form action="/start" method="POST" id="start-form">
+        <form action="{{ request.scope.get('root_path', '') }}/start" method="POST" id="start-form">
 
             <div class="start-div">
                 <label for="topic" class="start-label">
@@ -53,7 +56,7 @@
                 })
             );
 
-            $.get('/api/topics')
+            $.get(ROOT_PATH + '/api/topics')
                 .done(function (topics) {
                     if (topics.length > 0) {
                         $.each(topics, function (index, topic) {
@@ -72,7 +75,7 @@
                 .fail(function () {
                     $errorMessage.text('Failed to connect to server to load vocabulary.').show();
                 })
-                .always(function() {
+                .always(function () {
                     // Enable the form elements regardless of API call success
                     $select.prop('disabled', false);
                     $startButton.prop('disabled', false);

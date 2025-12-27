@@ -5,8 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quiz Results</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="{{ request.scope.get('root_path', '') }}/static/style.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        const ROOT_PATH = "{{ request.scope.get('root_path', '') }}";
+    </script>
 </head>
 
 <body>
@@ -36,7 +39,7 @@
     <script>
         $(document).ready(function () {
 
-            $.get('/api/result')
+            $.get(ROOT_PATH + '/api/result')
                 .done(function (data) {
                     $('#correct-count').text(data.correct_count);
                     $('#total-questions').text(data.total_questions);
@@ -66,7 +69,7 @@
                 })
                 .fail(function (xhr) {
                     if (xhr.status === 401) {
-                        window.location.href = "/";
+                        window.location.href = ROOT_PATH + "/";
                     } else {
                         $('#review-container').html('<p style="color:red; text-align:center;">Error loading results.</p>');
                         console.error("Error loading results:", xhr);
@@ -78,9 +81,9 @@
 
                 $btn.text("Resetting...").prop('disabled', true);
 
-                $.post('/api/reset')
+                $.post(ROOT_PATH + '/api/reset')
                     .done(function () {
-                        window.location.href = "/";
+                        window.location.href = ROOT_PATH + "/";
                     })
                     .fail(function (xhr) {
                         console.error("Failed to reset quiz:", xhr);

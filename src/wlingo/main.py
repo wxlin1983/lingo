@@ -30,7 +30,10 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 if not os.path.exists(settings.LOG_DIR):
-    os.makedirs(settings.LOG_DIR)
+    try:
+        os.makedirs(settings.LOG_DIR)
+    except FileExistsError:
+        pass
 log_path = os.path.join(settings.LOG_DIR, settings.LOG_FILE)
 file_handler = RotatingFileHandler(log_path, maxBytes=5_000_000, backupCount=3)
 file_handler.setFormatter(
@@ -50,6 +53,7 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     debug=settings.DEBUG,
     lifespan=lifespan,
+    root_path=settings.ROOT_PATH,
 )
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -98,6 +102,7 @@ async def home(request: Request):
 
 @app.post("/start", response_class=RedirectResponse)
 def start_quiz_session(
+    request: Request,
     topic: str = Form(...),
 ):
     mode = "standard"

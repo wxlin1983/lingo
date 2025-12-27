@@ -13,6 +13,7 @@ class Settings:
     TEST_SIZE: int = 15
     SESSION_COOKIE_NAME: str = "quiz_session_id"
     SESSION_TIMEOUT_MINUTES: int = 120
+    ROOT_PATH: str = os.environ.get("ROOT_PATH", "")
 
 
 settings = Settings()

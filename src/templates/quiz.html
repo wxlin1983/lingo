@@ -5,8 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ topic|capitalize }} Quiz</title>
-    <link href="/static/style.css" rel="stylesheet">
+    <link href="{{ request.scope.get('root_path', '') }}/static/style.css" rel="stylesheet">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        const ROOT_PATH = "{{ request.scope.get('root_path', '') }}";
+    </script>
 </head>
 
 <body>
@@ -33,172 +36,174 @@
 
         <div class="nav-area">
             <button id="next-btn">Next Question >></button>
-            <a href="/result" id="finish-btn">See Results</a>
+            <a href="{{ request.scope.get('root_path', '') }}/result" id="finish-btn">See Results</a>
         </div>
 
         <p class="tip">
-            <small>Tip: Use keys <strong>1-4</strong> to select, <strong>Enter</strong> for next{% if mode == 'standard' %},
+            <small>Tip: Use keys <strong>1-4</strong> to select, <strong>Enter</strong> for next{% if mode == 'standard'
+                %},
                 <strong>S</strong> to speak{% endif %}.</small>
         </p>
     </div>
 
     <script>
         $(document).ready(function () {
-            const currentIndex = {{ current_index }};
-            const mode = "{{ mode }}";
-            const topic = "{{ topic }}";
+            const currentIndex = {{ current_index }
+        };
+        const mode = "{{ mode }}";
+        const topic = "{{ topic }}";
 
-            let isAnswered = false;
-            let currentQuestionText = "";
+        let isAnswered = false;
+        let currentQuestionText = "";
 
-            function speakWord() {
-                if ('speechSynthesis' in window && currentQuestionText) {
-                    window.speechSynthesis.cancel();
-                    const utterance = new SpeechSynthesisUtterance(currentQuestionText);
-                    const langMap = {
-                        "English": "en-US",
-                        "Korean": "ko-KR"
-                    };
-                    if (topic in langMap) {
-                        utterance.lang = langMap[topic];
-                    }
-                    utterance.rate = 0.9;
-                    window.speechSynthesis.speak(utterance);
+        function speakWord() {
+            if ('speechSynthesis' in window && currentQuestionText) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(currentQuestionText);
+                const langMap = {
+                    "English": "en-US",
+                    "Korean": "ko-KR"
+                };
+                if (topic in langMap) {
+                    utterance.lang = langMap[topic];
                 }
+                utterance.rate = 0.9;
+                window.speechSynthesis.speak(utterance);
             }
+        }
 
-            function loadQuestion() {
-                $.get(`/api/quiz/${currentIndex}`)
-                    .done(function (data) {
-                        $('#question-display').text(data.word);
-                        currentQuestionText = data.word; // Update current question text
+        function loadQuestion() {
+            $.get(ROOT_PATH + `/api/quiz/${currentIndex}`)
+                .done(function (data) {
+                    $('#question-display').text(data.word);
+                    currentQuestionText = data.word; // Update current question text
 
-                        $('#current-q').text(data.current_index + 1);
-                        $('#total-q').text(data.total_questions);
+                    $('#current-q').text(data.current_index + 1);
+                    $('#total-q').text(data.total_questions);
 
-                        const $container = $('#options-container').empty();
+                    const $container = $('#options-container').empty();
 
-                        $.each(data.options, function (index, option) {
+                    $.each(data.options, function (index, option) {
 
-                            const hotkey = index + 1;
-                            const $btn = $('<button>')
-                                .addClass('option-btn')
-                                .html(`<span class="key-hint">${hotkey}</span> ${option}`)
-                                .on('click', function () {
-                                    submitAnswer(index, $(this));
-                                });
-
-                            if (data.answer_record) {
-                                isAnswered = true;
-                                $btn.addClass('disabled');
-                                if (option === data.answer_record.correct_answer) $btn.addClass('correct');
-                                if (option === data.answer_record.user_answer && !data.answer_record.is_correct) $btn.addClass('incorrect');
-                            }
-
-                            $container.append($btn);
-                        });
+                        const hotkey = index + 1;
+                        const $btn = $('<button>')
+                            .addClass('option-btn')
+                            .html(`<span class="key-hint">${hotkey}</span> ${option}`)
+                            .on('click', function () {
+                                submitAnswer(index, $(this));
+                            });
 
                         if (data.answer_record) {
-                            showNextButton(data.total_questions);
+                            isAnswered = true;
+                            $btn.addClass('disabled');
+                            if (option === data.answer_record.correct_answer) $btn.addClass('correct');
+                            if (option === data.answer_record.user_answer && !data.answer_record.is_correct) $btn.addClass('incorrect');
                         }
-                    })
-                    .fail(function () {
-                        $('#question-display').text("Error loading question.");
-                        console.error("Load failed");
+
+                        $container.append($btn);
                     });
-            }
 
-
-            function submitAnswer(selectedIndex, $clickedBtn) {
-
-                $('.option-btn').addClass('disabled');
-                isAnswered = true;
-
-                $.post('/submit_answer', {
-                    selected_option_index: selectedIndex,
-                    current_index: currentIndex
+                    if (data.answer_record) {
+                        showNextButton(data.total_questions);
+                    }
                 })
-                    .done(function (result) {
-                        $('.option-btn').each(function () {
-                            const $btn = $(this);
-
-                            const btnText = $btn.text().replace(/^\d+\s/, '');
-
-                            if ($btn.text().includes(result.correct_answer)) {
-                                $btn.addClass('correct');
-                            }
-                            if ($btn.is($clickedBtn) && !result.is_correct) {
-                                $btn.addClass('incorrect');
-                            }
-                        });
-
-                        const $feedback = $('#feedback-message');
-                        if (result.is_correct) {
-                            $feedback.text("Correct!").css('color', '#155724');
-                        } else {
-                            $feedback.text(`Wrong! The answer is ${result.correct_answer}`).css('color', '#721c24');
-                        }
-
-                        const totalQ = parseInt($('#total-q').text());
-                        showNextButton(totalQ);
-                    })
-                    .fail(function (xhr) {
-                        const errorMsg = xhr.responseJSON ? xhr.responseJSON.error : "Submission failed";
-                        alert("Error: " + errorMsg);
-                    });
-            }
-
-
-            function showNextButton(totalQuestions) {
-                const nextIndex = currentIndex + 1;
-                if (nextIndex < totalQuestions) {
-                    $('#next-btn').css('display', 'inline-block');
-                } else {
-                    $('#finish-btn').css('display', 'inline-block');
-                }
-            }
-
-            function goToNext() {
-                window.location.href = `/quiz/${currentIndex + 1}`;
-            }
-
-            // --- Event Listeners ---
-            if (mode === 'standard') {
-                $('#speak-btn').on('click', function () {
-                    speakWord();
+                .fail(function () {
+                    $('#question-display').text("Error loading question.");
+                    console.error("Load failed");
                 });
+        }
+
+
+        function submitAnswer(selectedIndex, $clickedBtn) {
+
+            $('.option-btn').addClass('disabled');
+            isAnswered = true;
+
+            $.post(ROOT_PATH + '/submit_answer', {
+                selected_option_index: selectedIndex,
+                current_index: currentIndex
+            })
+                .done(function (result) {
+                    $('.option-btn').each(function () {
+                        const $btn = $(this);
+
+                        const btnText = $btn.text().replace(/^\d+\s/, '');
+
+                        if ($btn.text().includes(result.correct_answer)) {
+                            $btn.addClass('correct');
+                        }
+                        if ($btn.is($clickedBtn) && !result.is_correct) {
+                            $btn.addClass('incorrect');
+                        }
+                    });
+
+                    const $feedback = $('#feedback-message');
+                    if (result.is_correct) {
+                        $feedback.text("Correct!").css('color', '#155724');
+                    } else {
+                        $feedback.text(`Wrong! The answer is ${result.correct_answer}`).css('color', '#721c24');
+                    }
+
+                    const totalQ = parseInt($('#total-q').text());
+                    showNextButton(totalQ);
+                })
+                .fail(function (xhr) {
+                    const errorMsg = xhr.responseJSON ? xhr.responseJSON.error : "Submission failed";
+                    alert("Error: " + errorMsg);
+                });
+        }
+
+
+        function showNextButton(totalQuestions) {
+            const nextIndex = currentIndex + 1;
+            if (nextIndex < totalQuestions) {
+                $('#next-btn').css('display', 'inline-block');
+            } else {
+                $('#finish-btn').css('display', 'inline-block');
+            }
+        }
+
+        function goToNext() {
+            window.location.href = ROOT_PATH + `/quiz/${currentIndex + 1}`;
+        }
+
+        // --- Event Listeners ---
+        if (mode === 'standard') {
+            $('#speak-btn').on('click', function () {
+                speakWord();
+            });
+        }
+
+
+        $(document).on('keydown', function (e) {
+            const key = e.key;
+
+            if (['1', '2', '3', '4'].includes(key) && !isAnswered) {
+                const index = parseInt(key) - 1;
+                const $buttons = $('.option-btn');
+                if ($buttons.length > index) {
+                    $buttons.eq(index).click();
+                }
             }
 
-
-            $(document).on('keydown', function (e) {
-                const key = e.key;
-
-                if (['1', '2', '3', '4'].includes(key) && !isAnswered) {
-                    const index = parseInt(key) - 1;
-                    const $buttons = $('.option-btn');
-                    if ($buttons.length > index) {
-                        $buttons.eq(index).click();
-                    }
+            if (key === 'Enter' && isAnswered) {
+                if ($('#next-btn').is(':visible')) {
+                    goToNext();
+                } else if ($('#finish-btn').is(':visible')) {
+                    window.location.href = $('#finish-btn').attr('href');
                 }
+            }
 
-                if (key === 'Enter' && isAnswered) {
-                    if ($('#next-btn').is(':visible')) {
-                        goToNext();
-                    } else if ($('#finish-btn').is(':visible')) {
-                        window.location.href = $('#finish-btn').attr('href');
-                    }
-                }
-
-                if (key.toLowerCase() === 's' && mode === 'standard') {
-                    speakWord();
-                }
-            });
+            if (key.toLowerCase() === 's' && mode === 'standard') {
+                speakWord();
+            }
+        });
 
 
-            $('#next-btn').on('click', goToNext);
+        $('#next-btn').on('click', goToNext);
 
 
-            loadQuestion();
+        loadQuestion();
         });
     </script>
 </body>
