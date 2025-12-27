@@ -7,7 +7,6 @@ from logging.handlers import RotatingFileHandler
 from typing import Optional
 
 import uvicorn
-from redis import Redis
 from fastapi import (
     Cookie,
     Depends,
@@ -21,8 +20,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .config import settings
-from .database import init_db
-from .log_handler import SQLiteHandler
 from .models import AnswerRecord, SessionData
 from .quiz import QuizFactory
 from .redis_session import redis_client
@@ -32,24 +29,19 @@ from .vocabulary import VocabularyManager
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-if settings.LOG_TO_DB:
-    logger.addHandler(SQLiteHandler())
-else:
-    if not os.path.exists(settings.LOG_DIR):
-        os.makedirs(settings.LOG_DIR)
-    log_path = os.path.join(settings.LOG_DIR, settings.LOG_FILE)
-    file_handler = RotatingFileHandler(log_path, maxBytes=5_000_000, backupCount=3)
-    file_handler.setFormatter(
-        logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    )
-    logger.addHandler(file_handler)
+if not os.path.exists(settings.LOG_DIR):
+    os.makedirs(settings.LOG_DIR)
+log_path = os.path.join(settings.LOG_DIR, settings.LOG_FILE)
+file_handler = RotatingFileHandler(log_path, maxBytes=5_000_000, backupCount=3)
+file_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+)
+logger.addHandler(file_handler)
 
 
 # --- Lifecycle ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if settings.LOG_TO_DB:
-        init_db()
     vocab_manager.load_all()
     yield
 
